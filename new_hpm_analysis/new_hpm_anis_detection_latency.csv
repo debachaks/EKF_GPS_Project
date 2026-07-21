@@ -1,0 +1,16 @@
+seed,anomaly_type,onset_t,detection_t,latency,total_alarms_after_onset,false_alarms_before_onset
+seed_new_1,drift,150,240.0,90.0,15,0
+seed_new_2,drift,150,150.0,0.0,8,4
+seed_new_3,drift,150,,,0,12
+seed_new_4,drift,150,164.0,14.0,13,5
+seed_new_5,drift,150,163.0,13.0,9,16
+seed_new_1,jump,150,150.0,0.0,65,0
+seed_new_2,jump,150,150.0,0.0,53,4
+seed_new_3,jump,150,150.0,0.0,44,12
+seed_new_4,jump,150,150.0,0.0,51,5
+seed_new_5,jump,150,150.0,0.0,55,16
+seed_new_1,replay,150,250.0,100.0,15,0
+seed_new_2,replay,150,150.0,0.0,19,4
+seed_new_3,replay,150,,,0,12
+seed_new_4,replay,150,174.0,24.0,11,5
+seed_new_5,replay,150,272.0,122.0,2,16

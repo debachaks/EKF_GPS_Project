@@ -1,0 +1,10 @@
+HPM3 configured with m
+ask 0x40001
+HPM4 configured with mask 0x1000000
+HPM5 configured with mask 0x20001
+HPM6 configured with mask 0x0202
+HPM7 configured with mask 0x1001
+HPM8 configured with mask 0x2001
+HPM9 configured with mask 0x2000
+HPM10 configured with mask 0x8001
+Start
