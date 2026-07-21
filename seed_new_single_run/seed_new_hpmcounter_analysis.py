@@ -14,15 +14,19 @@ seed_new-style runs, not a confirmed result.
 """
 
 import os
+import sys
 
 import numpy as np
 import pandas as pd
-
-from data_preprocessing import hex_to_int
-from hpmcounter_analysis import ANOMALY_TYPES, COUNTERS, benjamini_hochberg, cliffs_delta
 from scipy.stats import mannwhitneyu
 
 SRC_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(SRC_DIR)
+sys.path.insert(0, os.path.join(PROJECT_ROOT, "original_pipeline"))
+
+from data_preprocessing import hex_to_int  # noqa: E402
+from hpmcounter_analysis import ANOMALY_TYPES, COUNTERS, benjamini_hochberg, cliffs_delta  # noqa: E402
+
 SEED_DIR = os.path.join(SRC_DIR, "seed_new")
 OUT_PATH = os.path.join(SRC_DIR, "seed_new_hpmcounter_stats.csv")
 

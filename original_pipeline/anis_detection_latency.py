@@ -1,4 +1,4 @@
-"""ANIS-based anomaly detection latency for every seed_*_data/seed_new run.
+"""ANIS-based anomaly detection latency for every seed_*_data run.
 
 For each ekf_diag_{drift,jump,replay}.csv (normal is excluded - there's no
 attack onset to detect), this finds:
@@ -11,6 +11,9 @@ attack onset to detect), this finds:
 
 If anis_alarm never fires at/after onset, latency is left as NaN (not
 detected within the run).
+
+(The single-run seed_new/ dataset moved to seed_new_single_run/ and isn't
+covered here - see that folder's own scripts.)
 """
 
 import glob
@@ -21,7 +24,6 @@ import pandas as pd
 SRC_DIR = os.path.dirname(os.path.abspath(__file__))
 DIAG_GLOB_PATTERNS = [
     os.path.join(SRC_DIR, "seed_*_data", "ekf_diag_*.csv"),
-    os.path.join(SRC_DIR, "seed_new", "ekf_diag_*.csv"),
 ]
 OUT_PATH = os.path.join(SRC_DIR, "anis_detection_latency.csv")
 

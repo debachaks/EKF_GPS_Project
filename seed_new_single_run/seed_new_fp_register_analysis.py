@@ -22,14 +22,18 @@ settled result.
 
 import os
 import struct
+import sys
 
 import numpy as np
 import pandas as pd
 from scipy.stats import mannwhitneyu
 
-from hpmcounter_analysis import benjamini_hochberg, cliffs_delta
-
 SRC_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(SRC_DIR)
+sys.path.insert(0, os.path.join(PROJECT_ROOT, "original_pipeline"))
+
+from hpmcounter_analysis import benjamini_hochberg, cliffs_delta  # noqa: E402
+
 SEED_DIR = os.path.join(SRC_DIR, "seed_new")
 CONST_OUT = os.path.join(SRC_DIR, "seed_new_fp_constant_registers.csv")
 VARYING_OUT = os.path.join(SRC_DIR, "seed_new_fp_varying_stats.csv")

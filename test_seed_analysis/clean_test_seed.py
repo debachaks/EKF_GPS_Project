@@ -6,10 +6,14 @@ unique-values drop). Cleaned files written to CLEAN_HPC_TEST_SEED/.
 
 import glob
 import os
-
-from clean_hpc import clean_file
+import sys
 
 SRC_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(SRC_DIR)
+sys.path.insert(0, os.path.join(PROJECT_ROOT, "original_pipeline"))
+
+from clean_hpc import clean_file  # noqa: E402
+
 SEED_DIR = os.path.join(SRC_DIR, "test_seed")
 OUT_DIR = os.path.join(SRC_DIR, "CLEAN_HPC_TEST_SEED")
 

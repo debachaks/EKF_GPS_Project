@@ -18,7 +18,7 @@ from scipy.stats import gaussian_kde
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
-sys.path.insert(0, PROJECT_ROOT)
+sys.path.insert(0, os.path.join(PROJECT_ROOT, "original_pipeline"))
 
 from data_preprocessing import hex_to_int  # noqa: E402
 

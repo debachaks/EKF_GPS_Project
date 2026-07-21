@@ -23,7 +23,7 @@ from scipy.stats import mannwhitneyu
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
-sys.path.insert(0, PROJECT_ROOT)
+sys.path.insert(0, os.path.join(PROJECT_ROOT, "original_pipeline"))
 
 from hpmcounter_analysis import benjamini_hochberg, cliffs_delta  # noqa: E402
 

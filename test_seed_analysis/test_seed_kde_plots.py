@@ -4,15 +4,19 @@ seeds - test_seed/ is one run per mode).
 """
 
 import os
+import sys
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from scipy.stats import gaussian_kde
 
-from data_preprocessing import hex_to_int
-
 SRC_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(SRC_DIR)
+sys.path.insert(0, os.path.join(PROJECT_ROOT, "original_pipeline"))
+
+from data_preprocessing import hex_to_int  # noqa: E402
+
 CLEAN_DIR = os.path.join(SRC_DIR, "CLEAN_HPC_TEST_SEED")
 PLOT_DIR = os.path.join(SRC_DIR, "test_seed_kde_plots")
 
