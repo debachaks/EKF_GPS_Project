@@ -25,7 +25,6 @@ from data_preprocessing import hex_to_int  # noqa: E402
 CLEAN_ROOT = os.path.join(SCRIPT_DIR, "CLEAN_HPC_NEW_HPM")
 PLOT_DIR = os.path.join(SCRIPT_DIR, "new_hpm_kde_plots")
 
-COUNTERS = [f"hpmcounter{i}" for i in range(3, 11)]
 MODES = ["normal", "drift", "jump", "replay"]
 
 MODE_COLOR = {
@@ -43,6 +42,17 @@ SURFACE = "#fcfcfb"
 
 def find_seed_dirs():
     return sorted(d for d in glob.glob(os.path.join(CLEAN_ROOT, "seed_new_[0-9]*")) if os.path.isdir(d))
+
+
+def find_counters(seed_dirs):
+    """hpmcounter columns present (post-cleaning) in every seed/mode file."""
+    common = None
+    for seed_dir in seed_dirs:
+        for mode in MODES:
+            path = os.path.join(seed_dir, f"ekf_{mode}_hpc.csv")
+            cols = frozenset(c for c in pd.read_csv(path, nrows=1).columns if c.startswith("hpmcounter"))
+            common = cols if common is None else (common & cols)
+    return sorted(common, key=lambda c: int(c.replace("hpmcounter", "")))
 
 
 def pooled_values(seed_dirs, mode, counter):
@@ -105,7 +115,9 @@ def main():
         return
     os.makedirs(PLOT_DIR, exist_ok=True)
 
-    for counter in COUNTERS:
+    counters = find_counters(seed_dirs)
+    print(f"hpmcounters present after cleaning: {counters}")
+    for counter in counters:
         series = {mode: pooled_values(seed_dirs, mode, counter) for mode in MODES}
         plot_counter(counter, series)
 
