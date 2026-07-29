@@ -74,7 +74,7 @@ def main():
     counters = find_counters(seed_dirs)
     print(f"hpmcounters present after cleaning: {counters}")
 
-    for counter in counters:
+    for counter in counters + ["sp", "fp"]:
         out_dir = os.path.join(PLOT_ROOT, f"{counter}_per_seed")
         os.makedirs(out_dir, exist_ok=True)
         for seed_dir in seed_dirs:

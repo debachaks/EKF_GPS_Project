@@ -1,0 +1,9 @@
+counter,importance,std_of_rate,mean_of_rate,event
+hpmcounter7,0.1386358252011977,0.018683920085926127,0.25762384952496253,addr-generation interlock (M3: AGU timing - low hope)
+hpmcounter4,0.1383538083521271,6.796690482118497e-05,0.00011485343378477308,FP div/sqrt retired (M1: count control)
+hpmcounter3,0.1349687570457784,0.01039223875896059,0.09348517669875235,FP interlock cycles (M1: FP latency - PRIMARY)
+hpmcounter8,0.13370097175060036,0.013694915751051855,0.48466959753945354,int arithmetic retired (activity reference)
+hpmcounter6,0.13281544903381687,0.00010364284564121566,4.008966151163278e-05,long-latency interlock (M1: alt FP-stall observable)
+hpmcounter5,0.13023705758036894,0.00045349078940787823,0.001194812512167262,cond-branch mispredictions (M2: PD-check + alarm branches)
+hpmcounter9,0.11532048797996103,7.5989619351894864e-06,5.5315717408570634e-05,pipeline flushes (NEGATIVE control - must stay flat)
+hpmcounter10,0.0,0.0,0.0,exceptions taken (should be 0; nonzero = FP traps)

@@ -125,7 +125,7 @@ def main():
     print(f"hpmcounters present after cleaning: {counters}")
 
     os.makedirs(PLOT_DIR, exist_ok=True)
-    for counter in counters:
+    for counter in counters + ["sp", "fp"]:
         grid, diffs = build_pairwise_diffs(seed_names, counter)
         plot_counter(counter, grid, diffs, PLOT_DIR)
 

@@ -137,7 +137,7 @@ def main():
     print(f"hpmcounters present after cleaning: {counters}")
 
     os.makedirs(PLOT_DIR, exist_ok=True)
-    for counter in counters:
+    for counter in counters + ["sp", "fp"]:
         plot_counter(counter, seed_names, PLOT_DIR)
 
 
