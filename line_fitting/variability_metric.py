@@ -1,7 +1,12 @@
 """Variability detection: V_{t,W} = log(s^2_{t,W} + 1), a sliding-window
-(size W=10, step=1) variance-based metric on rolling_z_w10 - a companion
+(size W=10, step=1) variance-based metric on the RAW z-score - a companion
 to trend_score_windowed.py's D(t,W) (slope-based), using the window's own
-variance instead of a line fit.
+variance instead of a line fit. Fit directly to raw z, not the
+rolling-mean-smoothed rolling_z_w10 - a rolling mean suppresses variance by
+construction (a W-sample mean of near-independent values has roughly 1/W
+the variance of the raw series), so computing variance on top of it would
+mostly measure how much the already-smoothed trend wobbles, not how noisy
+the raw signal actually is.
 
 V = log(variance + 1) is 0 exactly when a window has zero variance and
 increases monotonically as variance grows - no epsilon hack, no U-shape
@@ -16,7 +21,7 @@ Every window of every attack-mode (jump/drift/replay) run is then compared
 against its own counter's h_V; V_{t,W} > h_V flags that window as a
 variability-deviation / attack indication.
 
-Reads line_fitting_timeseries.csv (rolling_z_w10 per counter/mode/seed/
+Reads line_fitting_timeseries.csv (raw z per counter/mode/seed/
 sample_index, from line_fitting_analysis.py).
 """
 
@@ -57,7 +62,7 @@ def compute_all_windows(ts):
     rows = []
     for (counter, mode, seed), group in ts.groupby(["counter", "mode", "seed"]):
         group = group.sort_values("sample_index")
-        z = group["rolling_z_w10"].to_numpy(dtype=float)
+        z = group["z"].to_numpy(dtype=float)
         sample_index = group["sample_index"].to_numpy()
         for start, variance, v in compute_variation(z):
             window_end = sample_index[start + WINDOW - 1]

@@ -1,26 +1,30 @@
-"""Windowed trend score D(t,W) - sliding window (size W=10, step=1), fit to
-rolling_z_w10, giving a D(t,W) time series per run (see trend_score.py for
+"""Windowed trend score D(t,W) - sliding window (size W=10, step=1), fit
+DIRECTLY to the raw z-score (not the rolling-mean-smoothed rolling_z_w10),
+giving a D(t,W) time series per run. One window in, one D out - no window
+fit on top of an already-windowed/smoothed series (see trend_score.py for
 an earlier single-scalar-per-run version, superseded by this window-wise
 one).
 
 For each run (every counter/mode/seed combo), slides a window of W=10
-consecutive rolling_z_w10 values (step=1) across the run. Within each
-window position, fits a local line
+consecutive RAW z values (step=1) across the run. Within each window
+position, fits a local line
 
-    rolling_z_i ~ alpha + beta * i        (i = 0..W-1, local index)
+    z_i ~ alpha + beta * i        (i = 0..W-1, local index)
 
 Shifting the x-axis by a constant doesn't change the OLS slope, only the
 intercept, so using a local 0..9 index instead of the run's global sample
 index has no effect on beta or D - it only changes alpha, which isn't used
 here.
 
-    e_i         = rolling_z_i - fitted_i
+    e_i         = z_i - fitted_i
     sigma_eps^2 = sum(e_i^2) / (W - 2)
     SE(beta)    = sqrt(sigma_eps^2 / sum((i - i_bar)^2))
     D           = |beta / SE(beta)|
 
-Windows containing any NaN rolling_z_w10 value (the first 9 samples of
-every run, before the rolling mean has enough data) are skipped.
+Windows containing any NaN z value are skipped (raw z has none in
+practice, since the shared elapsed-time grid is built to avoid
+extrapolation - unlike rolling_z_w10, which has NaN for the first 9
+samples of every run before the rolling mean has enough history).
 
 Detection threshold h_D is a ground truth built PER COUNTER from the 20
 normal trials:
@@ -31,7 +35,7 @@ Every window of every attack-mode (jump/drift/replay) run is then compared
 against its own counter's h_D; D(t,W) > h_D flags that window as a
 trend-deviation / attack indication.
 
-Reads line_fitting_timeseries.csv (already has rolling_z_w10 per
+Reads line_fitting_timeseries.csv (already has raw z per
 counter/mode/seed/sample_index from line_fitting_analysis.py).
 """
 
@@ -82,7 +86,7 @@ def compute_all_windows(ts):
     rows = []
     for (counter, mode, seed), group in ts.groupby(["counter", "mode", "seed"]):
         group = group.sort_values("sample_index")
-        z_values = group["rolling_z_w10"].to_numpy()
+        z_values = group["z"].to_numpy()
         sample_indices = group["sample_index"].to_numpy()
         for start, beta, d in windowed_d(z_values):
             window_end_t = sample_indices[start + WINDOW - 1]
