@@ -2,18 +2,20 @@ import os
 import pandas as pd
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+RESULTS_DIR = os.path.join(SCRIPT_DIR, "results")
 
 # Inputs
-ATTACK_WINDOWED_PATH = os.path.join(SCRIPT_DIR, "trend_score_windowed_results.csv")
-NORMAL_THRESH_PATH = os.path.join(SCRIPT_DIR, "normal_trend_score_thresholds.csv")
+ATTACK_WINDOWED_PATH = os.path.join(RESULTS_DIR, "trend_score_windowed_results.csv")
+NORMAL_THRESH_PATH = os.path.join(RESULTS_DIR, "normal_trend_score_thresholds.csv")
 
 # Outputs
-FLAGGED_WINDOWS_PATH = os.path.join(SCRIPT_DIR, "attack_flagged_windows.csv")
-WINDOW_LEVEL_OUTPUT_PATH = os.path.join(SCRIPT_DIR, "attack_with_thresholds.csv")
-TRIAL_SUMMARY_PATH = os.path.join(SCRIPT_DIR, "attack_trial_summary.csv")
+FLAGGED_WINDOWS_PATH = os.path.join(RESULTS_DIR, "attack_flagged_windows.csv")
+WINDOW_LEVEL_OUTPUT_PATH = os.path.join(RESULTS_DIR, "attack_with_thresholds.csv")
+TRIAL_SUMMARY_PATH = os.path.join(RESULTS_DIR, "attack_trial_summary.csv")
 
 
 def main():
+    os.makedirs(RESULTS_DIR, exist_ok=True)
     attack_df = pd.read_csv(ATTACK_WINDOWED_PATH)
     thresh_df = pd.read_csv(NORMAL_THRESH_PATH)
 

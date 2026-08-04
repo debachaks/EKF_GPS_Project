@@ -14,7 +14,8 @@ import pandas as pd
 from scipy import stats
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-TIMESERIES_PATH = os.path.join(SCRIPT_DIR, "line_fitting_timeseries.csv")
+RESULTS_DIR = os.path.join(SCRIPT_DIR, "results")
+TIMESERIES_PATH = os.path.join(RESULTS_DIR, "line_fitting_timeseries.csv")
 PLOT_DIR = os.path.join(SCRIPT_DIR, "plots")
 
 ZOOM_SAMPLES = 100  # first N sample indices (out of 300), well before onset (~167)

@@ -45,10 +45,11 @@ import numpy as np
 import pandas as pd
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-TIMESERIES_PATH = os.path.join(SCRIPT_DIR, "line_fitting_timeseries.csv")
-D_OUT_PATH = os.path.join(SCRIPT_DIR, "trend_score_windowed_results.csv")
-THRESHOLD_OUT_PATH = os.path.join(SCRIPT_DIR, "trend_score_threshold_by_counter.csv")
-FLAGGED_OUT_PATH = os.path.join(SCRIPT_DIR, "trend_score_attack_flags.csv")
+RESULTS_DIR = os.path.join(SCRIPT_DIR, "results")
+TIMESERIES_PATH = os.path.join(RESULTS_DIR, "line_fitting_timeseries.csv")
+D_OUT_PATH = os.path.join(RESULTS_DIR, "trend_score_windowed_results.csv")
+THRESHOLD_OUT_PATH = os.path.join(RESULTS_DIR, "trend_score_threshold_by_counter.csv")
+FLAGGED_OUT_PATH = os.path.join(RESULTS_DIR, "trend_score_attack_flags.csv")
 
 WINDOW = 10
 STEP = 1
@@ -111,6 +112,7 @@ def build_thresholds(d_df):
 
 
 def main():
+    os.makedirs(RESULTS_DIR, exist_ok=True)
     ts = pd.read_csv(TIMESERIES_PATH)
 
     d_df = compute_all_windows(ts)

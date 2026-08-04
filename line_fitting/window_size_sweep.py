@@ -28,7 +28,8 @@ import numpy as np
 import pandas as pd
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-TIMESERIES_PATH = os.path.join(SCRIPT_DIR, "line_fitting_timeseries.csv")
+RESULTS_DIR = os.path.join(SCRIPT_DIR, "results")
+TIMESERIES_PATH = os.path.join(RESULTS_DIR, "line_fitting_timeseries.csv")
 
 WINDOW_SIZES = [5, 10, 20]
 STEP = 1

@@ -52,6 +52,7 @@ from data_preprocessing import hex_to_int  # noqa: E402
 
 CLEAN_ROOT = os.path.join(PROJECT_ROOT, "seed_old", "CLEAN_HPC_TEST_SEED")
 PLOT_DIR = os.path.join(SCRIPT_DIR, "plots")
+RESULTS_DIR = os.path.join(SCRIPT_DIR, "results")
 GRID_POINTS = 300
 WINDOW = 10
 
@@ -185,14 +186,15 @@ def main():
                         "rolling_z_w10": rz[i],
                     })
 
+    os.makedirs(RESULTS_DIR, exist_ok=True)
     summary_df = pd.DataFrame(summary_rows)
-    summary_df.to_csv(os.path.join(SCRIPT_DIR, "line_fitting_summary.csv"), index=False)
+    summary_df.to_csv(os.path.join(RESULTS_DIR, "line_fitting_summary.csv"), index=False)
 
     ts_df = pd.DataFrame(ts_rows)
-    ts_df.to_csv(os.path.join(SCRIPT_DIR, "line_fitting_timeseries.csv"), index=False)
+    ts_df.to_csv(os.path.join(RESULTS_DIR, "line_fitting_timeseries.csv"), index=False)
 
     beta_summary = summary_df.groupby(["counter", "mode"])["beta"].agg(["mean", "std"]).reset_index()
-    beta_summary.to_csv(os.path.join(SCRIPT_DIR, "beta_by_counter_mode.csv"), index=False)
+    beta_summary.to_csv(os.path.join(RESULTS_DIR, "beta_by_counter_mode.csv"), index=False)
     print("\nbeta (z-score trend slope), mean +/- std across 20 seeds, by counter and mode:")
     print(beta_summary.to_string(index=False))
 
@@ -214,9 +216,9 @@ def main():
         plt.close(fig)
         print(f"Saved {out_path}")
 
-    print(f"\nSaved {os.path.join(SCRIPT_DIR, 'line_fitting_summary.csv')}")
-    print(f"Saved {os.path.join(SCRIPT_DIR, 'line_fitting_timeseries.csv')}")
-    print(f"Saved {os.path.join(SCRIPT_DIR, 'beta_by_counter_mode.csv')}")
+    print(f"\nSaved {os.path.join(RESULTS_DIR, 'line_fitting_summary.csv')}")
+    print(f"Saved {os.path.join(RESULTS_DIR, 'line_fitting_timeseries.csv')}")
+    print(f"Saved {os.path.join(RESULTS_DIR, 'beta_by_counter_mode.csv')}")
 
 
 if __name__ == "__main__":

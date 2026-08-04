@@ -19,7 +19,8 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-FLAGS_PATH = os.path.join(SCRIPT_DIR, "combined_detection_flags.csv")
+RESULTS_DIR = os.path.join(SCRIPT_DIR, "results")
+FLAGS_PATH = os.path.join(RESULTS_DIR, "combined_detection_flags.csv")
 PLOT_DIR = os.path.join(SCRIPT_DIR, "firing_windows_plots", "per_seed")
 
 ATTACK_MODES = ["drift", "jump", "replay"]

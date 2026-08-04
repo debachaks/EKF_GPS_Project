@@ -43,11 +43,12 @@ sys.path.insert(0, SCRIPT_DIR)
 from trend_score_windowed import WINDOW, windowed_d  # noqa: E402
 from variability_metric import compute_variation  # noqa: E402
 
-TIMESERIES_PATH = os.path.join(SCRIPT_DIR, "line_fitting_timeseries.csv")
-WINDOWED_OUT_PATH = os.path.join(SCRIPT_DIR, "combined_detection_windowed.csv")
-THRESHOLD_OUT_PATH = os.path.join(SCRIPT_DIR, "combined_detection_thresholds.csv")
-FLAGGED_OUT_PATH = os.path.join(SCRIPT_DIR, "combined_detection_flags.csv")
-SUMMARY_OUT_PATH = os.path.join(SCRIPT_DIR, "combined_detection_summary.csv")
+RESULTS_DIR = os.path.join(SCRIPT_DIR, "results")
+TIMESERIES_PATH = os.path.join(RESULTS_DIR, "line_fitting_timeseries.csv")
+WINDOWED_OUT_PATH = os.path.join(RESULTS_DIR, "combined_detection_windowed.csv")
+THRESHOLD_OUT_PATH = os.path.join(RESULTS_DIR, "combined_detection_thresholds.csv")
+FLAGGED_OUT_PATH = os.path.join(RESULTS_DIR, "combined_detection_flags.csv")
+SUMMARY_OUT_PATH = os.path.join(RESULTS_DIR, "combined_detection_summary.csv")
 
 STEP = 1
 PERCENTILE = 95
@@ -106,6 +107,7 @@ def build_thresholds(windowed_df):
 
 
 def main():
+    os.makedirs(RESULTS_DIR, exist_ok=True)
     ts = pd.read_csv(TIMESERIES_PATH)
 
     windowed_df = compute_all_windows(ts)

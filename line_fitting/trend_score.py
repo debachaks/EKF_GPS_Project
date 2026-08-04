@@ -25,9 +25,10 @@ import numpy as np
 import pandas as pd
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-TIMESERIES_PATH = os.path.join(SCRIPT_DIR, "line_fitting_timeseries.csv")
-SUMMARY_PATH = os.path.join(SCRIPT_DIR, "line_fitting_summary.csv")
-OUT_PATH = os.path.join(SCRIPT_DIR, "trend_score_results.csv")
+RESULTS_DIR = os.path.join(SCRIPT_DIR, "results")
+TIMESERIES_PATH = os.path.join(RESULTS_DIR, "line_fitting_timeseries.csv")
+SUMMARY_PATH = os.path.join(RESULTS_DIR, "line_fitting_summary.csv")
+OUT_PATH = os.path.join(RESULTS_DIR, "trend_score_results.csv")
 
 
 def compute_d_for_group(group):
@@ -48,6 +49,7 @@ def compute_d_for_group(group):
 
 
 def main():
+    os.makedirs(RESULTS_DIR, exist_ok=True)
     ts = pd.read_csv(TIMESERIES_PATH)
     summary = pd.read_csv(SUMMARY_PATH)
 

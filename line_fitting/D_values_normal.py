@@ -3,12 +3,13 @@ import numpy as np
 import pandas as pd
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-TIMESERIES_PATH = os.path.join(SCRIPT_DIR, "line_fitting_timeseries.csv")
+RESULTS_DIR = os.path.join(SCRIPT_DIR, "results")
+TIMESERIES_PATH = os.path.join(RESULTS_DIR, "line_fitting_timeseries.csv")
 
 # Outputs
-WINDOWED_OUT_PATH = os.path.join(SCRIPT_DIR, "normal_trend_score_windowed_results.csv")
-MAX_OUT_PATH = os.path.join(SCRIPT_DIR, "normal_trend_score_max_per_trial.csv")
-THRESH_OUT_PATH = os.path.join(SCRIPT_DIR, "normal_trend_score_thresholds.csv")
+WINDOWED_OUT_PATH = os.path.join(RESULTS_DIR, "normal_trend_score_windowed_results.csv")
+MAX_OUT_PATH = os.path.join(RESULTS_DIR, "normal_trend_score_max_per_trial.csv")
+THRESH_OUT_PATH = os.path.join(RESULTS_DIR, "normal_trend_score_thresholds.csv")
 
 WINDOW = 10
 STEP = 1
@@ -74,6 +75,7 @@ def windowed_d(z_values):
 
 
 def main():
+    os.makedirs(RESULTS_DIR, exist_ok=True)
     ts = pd.read_csv(TIMESERIES_PATH)
 
     # Keep only normal runs
