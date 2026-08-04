@@ -7,59 +7,6 @@
  * Platform: SiFive 8-stage dual-issue RISC-V soft-core
  *           on Xilinx Versal SoC-FPGA
  *
- * ============================================================
- * WHAT CHANGED FROM THE OLD ON-DEVICE-NOISE VERSION
- * ============================================================
- *
- * The board no longer generates GPS noise or applies attacks at
- * runtime. All of that is now precomputed offline by
- * generate_trajectories.py and baked into trajectory.h as two
- * fixed arrays:
- *
- *     traj_true[TRAJ_LEN][3]      -- true (unspoofed) position
- *     traj_measured[TRAJ_LEN][3]  -- what the "receiver" measured:
- *                                     true + GPS noise, plus the
- *                                     attack offset from
- *                                     ATTACK_START onward (baked
- *                                     in per-mode by the Python
- *                                     generator; a "normal" mode
- *                                     trajectory has noise only,
- *                                     no attack offset ever)
- *
- * REMOVED entirely (no longer needed on-device):
- *     xorshift32() / uniform_rand() / gaussian_noise()  -- RNG
- *     apply_spoof()                                     -- attack logic
- *     hist_buf[] / hist_push() / hist_get()             -- replay history
- *     spoof_t struct
- *
- * Why: every mode now runs the EXACT SAME code on the board --
- * the only thing that differs between a normal run and an attack
- * run is which trajectory.h was compiled in. This removes the
- * confound where HPC counters were partly measuring the cost of
- * generating noise/attacks on-device (which differed by mode)
- * rather than purely the EKF's response to the data.
- *
- * ekf_step() now takes the measured position directly instead of
- * a mode string -- there's no attack decision left to make on the
- * board, it's already baked into which trajectory.h got compiled.
- *
- * The ATTACK_ON marker is KEPT -- it's still needed by the
- * analysis pipeline (validate_hpc.py / analyse_hpc.py) to find
- * the pre/post-attack split point in the HPC sample stream, even
- * though the board itself no longer branches on it.
- *
- * ============================================================
- * BUILD PROCESS (unchanged from before)
- * ============================================================
- * Set ATTACK_MODE-equivalent by choosing WHICH generated header
- * to copy in as trajectory.h before building:
- *     trajectory_normal_seed1.h  -> trajectory.h  (normal, trial 1)
- *     trajectory_jump_seed1.h    -> trajectory.h  (jump, trial 1)
- *     trajectory_drift_seed3.h   -> trajectory.h  (drift, trial 3)
- *     ... etc
- * Same one-mode-per-build workflow as before, just the mode is
- * now determined entirely by which precomputed file you copy in,
- * not by a runtime string.
  */
 
 #include <stdio.h>
