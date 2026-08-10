@@ -15,21 +15,26 @@ loop iteration, so successive deltas capture wildly varying partial
 iterations. A rolling mean (ROLLING_WINDOW samples) is applied on top
 of the raw rate to reveal the underlying trend, same idea as the
 firmware's own ANIS window smoothing raw per-step NIS.
+
+Runs over every plots/seed*/ folder - each seed's raw data csvs and its
+plots live together in that same folder. Replay is intentionally
+excluded even for seeds that have replay data (e.g. seed2), so all
+seeds are plotted the same way.
 """
 
+import glob
 import os
 
 import matplotlib.pyplot as plt
 import pandas as pd
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = SCRIPT_DIR
-PLOT_DIR = os.path.join(SCRIPT_DIR, "plots", "rate")
+SEED_DIRS = sorted(glob.glob(os.path.join(SCRIPT_DIR, "plots", "seed*")))
 
 ROLLING_WINDOW = 15
 
 COUNTERS = [f"hpmcounter{i}" for i in range(3, 11)]
-MODES = ["normal", "jump", "drift"]
+MODES = ["normal", "jump", "drift"]   # replay intentionally excluded
 MODE_COLOR = {"normal": "#2a78d6", "jump": "#eda100", "drift": "#1baf7a"}
 
 GRID_COLOR = "#e1e0d9"
@@ -46,8 +51,8 @@ def hex_to_int(val):
     return int(float(s))
 
 
-def load(mode):
-    path = os.path.join(DATA_DIR, f"ekf_{mode}_hpc.csv")
+def load(data_dir, mode):
+    path = os.path.join(data_dir, f"ekf_{mode}_hpc.csv")
     df = pd.read_csv(path)
     df["timestamp_ms"] = df["timestamp_ms"].map(hex_to_int)
     df["elapsed_ms"] = df["timestamp_ms"] - df["timestamp_ms"].iloc[0]
@@ -74,27 +79,30 @@ def style_axes(ax):
 
 
 def main():
-    os.makedirs(PLOT_DIR, exist_ok=True)
-    data = {mode: load(mode) for mode in MODES}
+    for seed_dir in SEED_DIRS:
+        seed_name = os.path.basename(seed_dir)
+        plot_dir = os.path.join(seed_dir, "rate")
+        os.makedirs(plot_dir, exist_ok=True)
+        data = {mode: load(seed_dir, mode) for mode in MODES}
 
-    for counter in COUNTERS:
-        fig, ax = plt.subplots(figsize=(9, 5), facecolor=SURFACE)
+        for counter in COUNTERS:
+            fig, ax = plt.subplots(figsize=(9, 5), facecolor=SURFACE)
 
-        for mode in MODES:
-            df = data[mode]
-            ax.plot(df["elapsed_ms"], df[f"{counter}_rate"], color=MODE_COLOR[mode], linewidth=1.2, label=mode)
+            for mode in MODES:
+                df = data[mode]
+                ax.plot(df["elapsed_ms"], df[f"{counter}_rate"], color=MODE_COLOR[mode], linewidth=1.2, label=mode)
 
-        ax.set_title(f"STF firmware: {counter} rate over time", color=TEXT_PRIMARY, fontsize=12)
-        ax.set_xlabel("elapsed time (ms since run start)", color=TEXT_MUTED)
-        ax.set_ylabel(f"{counter} (counts/sec)", color=TEXT_MUTED)
-        ax.legend(frameon=False, labelcolor=TEXT_PRIMARY, fontsize=9)
-        style_axes(ax)
-        fig.tight_layout()
+            ax.set_title(f"STF firmware ({seed_name}): {counter} rate over time", color=TEXT_PRIMARY, fontsize=12)
+            ax.set_xlabel("elapsed time (ms since run start)", color=TEXT_MUTED)
+            ax.set_ylabel(f"{counter} (counts/sec)", color=TEXT_MUTED)
+            ax.legend(frameon=False, labelcolor=TEXT_PRIMARY, fontsize=9)
+            style_axes(ax)
+            fig.tight_layout()
 
-        out_path = os.path.join(PLOT_DIR, f"{counter}_rate.png")
-        fig.savefig(out_path, dpi=150)
-        plt.close(fig)
-        print(f"Saved {out_path}")
+            out_path = os.path.join(plot_dir, f"{counter}_rate.png")
+            fig.savefig(out_path, dpi=150)
+            plt.close(fig)
+            print(f"Saved {out_path}")
 
 
 if __name__ == "__main__":
