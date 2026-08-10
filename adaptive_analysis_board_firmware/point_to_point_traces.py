@@ -1,6 +1,7 @@
 """hpmcounter3-10 vs. iteration (raw, and per-iteration rate) for the STF
-firmware's point-to-point runs (plots/*_point_to_point/<mode>_hpc.csv),
-normal/jump/drift overlaid per counter.
+firmware's point-to-point-style runs (plots/*/<mode>_hpc.csv, one row per
+EKF iteration -- e.g. *_point_to_point/, seed1_applied_stf/), normal/jump/
+drift overlaid per counter.
 
 Unlike plot_hpmcounters.py's periodic register-dump captures, these are
 one row per EKF iteration (aligned "iter" column, same point in execution
@@ -16,9 +17,14 @@ per-iteration change stands out directly. A rolling mean
 (ROLLING_WINDOW samples) is applied on top of the raw rate, same idea as
 plot_hpmcounters_rate.py.
 
-Runs over every plots/*_point_to_point/ folder found. Replay is
-intentionally excluded even if present, so every folder is plotted the
-same way.
+Runs over every plots/*/ folder that has a normal_hpc.csv (no "ekf_"
+prefix) in it -- that file presence is what distinguishes this simple
+per-iteration format from plot_hpmcounters.py's register-dump captures
+(plots/seed1/ekf_normal_hpc.csv etc.), rather than matching on folder
+name, so it picks up any folder using this format (*_point_to_point/,
+seed1_applied_stf/, future ones) without needing a naming convention.
+Replay is intentionally excluded even if present, so every folder is
+plotted the same way.
 """
 
 import glob
@@ -28,7 +34,10 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-RUN_DIRS = sorted(glob.glob(os.path.join(SCRIPT_DIR, "plots", "*_point_to_point")))
+RUN_DIRS = sorted(
+    os.path.dirname(p) for p in
+    glob.glob(os.path.join(SCRIPT_DIR, "plots", "*", "normal_hpc.csv"))
+)
 
 ROLLING_WINDOW = 15
 
