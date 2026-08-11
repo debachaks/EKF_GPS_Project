@@ -1,68 +1,76 @@
 /*
  * main_ekf_stf_applied.c
  *
- * APPLIED variant of main_ekf_stf.c: lambda_k now actually scales the
- * predicted covariance, instead of being computed-and-discarded.
+ * APPLIED variant of main_ekf_stf.c: lambda_k can actually scale the
+ * predicted covariance -- but only through two EXCLUSIVE, ANIS-gated
+ * branches, not unconditionally.
  *
  * ============================================================
  * HOW THIS DIFFERS FROM main_ekf_stf.c -- READ THIS FIRST
  * ============================================================
- * main_ekf_stf.c deliberately never let lambda_k touch ekf.P/ekf.x,
- * specifically so the already-working GPS+IMU NIS/ANIS detector
- * (main_ekf_new.c) stayed completely intact while probing for a
- * hardware signature from the extra computation alone. That gave a
- * real but narrow signal: hpm5 (cond-branch mispredictions), tied to
- * a fixed LAMBDA_WINDOW=10-step branch pattern right at ATTACK_START.
+ * main_ekf_stf.c deliberately never lets lambda_k touch ekf.P/ekf.x,
+ * so the already-working GPS+IMU NIS/ANIS detector (main_ekf_new.c)
+ * stays completely intact while probing for a hardware signature from
+ * the extra computation alone -- but it always computes lambda_k,
+ * every step, unconditionally, which caps the achievable signal at a
+ * timing-only effect (same instruction count every step, attack or
+ * not).
  *
- * This file makes the OPPOSITE trade: apply lambda_k for real, which
- * we already know (Trajectory/simulate_ekf_stf.py, 10 seeds x 4
- * modes) DEGRADES the NIS/ANIS detector --
+ * This file goes further: it makes the *computation itself* present
+ * or absent depending on the real, validated detector, using two
+ * separate exclusive branches:
  *
- *   drift nis_alarm:  baseline 51/299  ->  with lambda_k  2/299
- *   jump  nis_alarm: baseline 147/299  ->  with lambda_k  6.6/299
+ *   BRANCH 1 (in ekf_step): compute_lambda_k() -- the expensive part,
+ *   ~680 multiply-adds + 10 divisions -- only runs when last step's
+ *   ANIS already exceeded ANIS_THRESHOLD. ANIS was chosen as the
+ *   gate specifically because it's the detector we've already shown
+ *   is clean (seed1: drift fires 119/299, jump 151/299, vs normal
+ *   15/299), unlike raw per-step lambda_k magnitude, which is NOT
+ *   discriminative on its own (drift and normal came out
+ *   statistically identical: mean 1.20, max 4.2598, std ~0.45, both
+ *   modes). When ANIS didn't flag anything, this step just calls the
+ *   plain library ekf_predict() -- identical to main_ekf_stf.c.
  *
- * -- in exchange for a DIFFERENT, longer-lived hardware-observable
- * event: once lambda_k actually inflates P, P doesn't snap back on a
- * fixed window boundary the way the floor-branch pattern does. It
- * decays according to the filter's own recursive dynamics. Python
- * simulation (jump, seed 1) showed p_trace jump from a pre-attack
- * steady state of ~21.7 to a peak of ~7131 (>300x) at t=151, still
- * ~46% above baseline 34 steps later at t=184, with a second bump
- * around t=199-208 as the filter keeps re-adjusting. That's a much
- * longer, continuously-varying window than the rigid ~10-step branch
- * pattern -- and P feeds every subsequent matrix operation (F P F^T,
- * H P H^T, the gain inversion), so hpm3/hpm4 (FP interlock cycles /
- * FP div-sqrt retired -- your "M1: FP latency" pair) are the
- * predicted targets here, over an extended and VARIABLE-length
- * post-attack window -- not a fixed constant like LAMBDA_WINDOW.
+ *   BRANCH 2 (inside branch 1): even when compute_lambda_k() DID run,
+ *   P is only actually inflated (P = lambda_k*FPFt + Q) if the result
+ *   is genuinely above its floor of 1.0. If it landed exactly at 1.0
+ *   (ANIS was elevated, but the STF check itself found nothing), the
+ *   plain unscaled predict is used instead (P = FPFt + Q, reusing the
+ *   FPFt already computed rather than re-deriving it).
  *
- * THIS IS A DELIBERATE FORK, NOT AN UPGRADE: main_ekf_stf.c's result
- * (hpm5, NIS/ANIS intact) is still valid and kept as its own file.
- * Use this file only if hardware-counter detection is being pursued
- * as the PRIMARY strategy, since NIS/ANIS are expected to degrade
- * here exactly as the Python ablation predicted.
+ * NOT YET VALIDATED: the NIS/ANIS-degradation numbers that motivated
+ * main_ekf_stf.c's decoupled design (drift nis_alarm 51/299 -> 2/299
+ * under UNCONDITIONAL lambda_k application) describe the old design,
+ * not this one. Since P is now only inflated when ANIS/lambda_k both
+ * agree something is happening, the actual detection impact of THIS
+ * gated version hasn't been re-checked in
+ * Trajectory/simulate_ekf_stf.py yet -- do that before drawing
+ * conclusions about whether this version still suppresses detection
+ * the way the unconditional one did.
  *
  * ============================================================
  * WHAT ACTUALLY CHANGED FROM main_ekf_stf.c
  * ============================================================
+ *   - New static double anis_prev: last step's ANIS, carried forward
+ *     to gate this step's branch decision (ANIS for step t isn't
+ *     known until AFTER this step's update, so the gate necessarily
+ *     uses t-1's value -- same one-step-lag principle as lambda_k's
+ *     own windowing).
  *   - compute_lambda_k() gained an output parameter, FPFt_out: it
  *     already builds F*P_prior*F^T internally to compute M_k, so
  *     this just hands that same matrix back instead of discarding
- *     it, avoiding a redundant recompute.
- *   - ekf_step() no longer calls the library's ekf_predict(). It
- *     replicates ekf_predict()'s exact logic manually, but with
- *     lambda_k scaling the propagated-uncertainty term:
- *         ekf.x = fx
- *         ekf.P = lambda_k * FPFt + Q_mat      (was: 1.0 * FPFt + Q_mat)
- *     matching Trajectory/simulate_ekf_stf.py's run_ekf_stf() exactly
- *     -- only the FPFt term is scaled, Q is added unscaled after.
- *   - ekf_update() is called exactly as before -- it only reads
- *     ekf->P/ekf->x, so it doesn't need to know how they got there.
+ *     it, avoiding a redundant recompute when branch 2 needs it.
+ *   - ekf_step()'s predict logic is now the two-branch structure
+ *     described above, instead of always calling the library
+ *     ekf_predict() (main_ekf_stf.c) or always applying lambda_k
+ *     unconditionally (this file's earlier revision).
+ *   - lambda_window_push(e_raw) stays unconditional regardless of
+ *     which branch runs -- it's cheap bookkeeping (a 3-value copy),
+ *     not the expensive part, and the window needs to reflect the
+ *     TRUE most-recent-LAMBDA_WINDOW history so a future
+ *     compute_lambda_k() call isn't built from gappy data.
  *   - Everything else (run_model, compute_nis, diag_t, DIAG format,
- *     NIS/ANIS window, main() loop structure) is UNCHANGED from
- *     main_ekf_stf.c. NIS/ANIS/alarms are still logged -- kept as a
- *     reference/comparison against the ablation numbers above, not
- *     because they're expected to still work well.
+ *     main() loop structure) is UNCHANGED from main_ekf_stf.c.
  * ============================================================
  */
 
@@ -134,6 +142,12 @@ static void lambda_window_push(const double e[EKF_M]) {
     if (lam_count < LAMBDA_WINDOW)
         lam_count++;
 }
+
+/* ANIS from the previous step -- gates whether this step's predict
+   bothers checking lambda_k at all. Starts at 0.0 (below
+   ANIS_THRESHOLD), so step t=1 correctly takes the cheap plain-predict
+   path with no prior history to judge from. */
+static double anis_prev = 0.0;
 
 /* ============================================================
  * EKF MODEL -- CONSTANT VELOCITY, ACCEL-DRIVEN PREDICTION
@@ -393,24 +407,51 @@ static void ekf_step(int t,
     for (i = 0; i < EKF_M; i++)
         e_raw[i] = z_meas[i] - hx[i];
 
-    /* lambda_k: computed from the PRE-predict P (ekf.P still holds
-       last step's post-update value here), same one-step-lag
-       causal ordering as main_ekf_stf.c -- pushed into the window
-       AFTER use, so lambda_k for step t only sees evidence up to
-       t-1. FPFt is handed back so the predict below can reuse it. */
-    double FPFt[EKF_N*EKF_N];
-    double lambda_k = compute_lambda_k(F, ekf.P, H, R_mat, FPFt);
+    /* The window always tracks the true most-recent-LAMBDA_WINDOW
+       history, regardless of whether lambda_k gets computed this
+       step -- cheap bookkeeping (a 3-value copy), not the expensive
+       part, so it stays unconditional. If it were only pushed when
+       triggered, a future lambda_k computation would be built from a
+       gappy, non-contiguous history instead of the real last 10
+       steps. */
     lambda_window_push(e_raw);
 
-    /* Predict, WITH lambda_k APPLIED -- this is the one substantive
-       difference from main_ekf_stf.c. Replicates ekf_predict()'s
-       exact logic (x = fx, P = F P F^T + Q) but scales only the
-       propagated-uncertainty term by lambda_k, matching
-       Trajectory/simulate_ekf_stf.py's run_ekf_stf() exactly. Q is
-       added unscaled, same as an unmodified predict. */
-    memcpy(ekf.x, fx, EKF_N * sizeof(double));
-    for (i = 0; i < EKF_N * EKF_N; i++)
-        ekf.P[i] = lambda_k * FPFt[i] + Q_mat[i];
+    /* EXCLUSIVE BRANCH 1: only bother computing lambda_k at all when
+       last step's ANIS already flagged something as unusual. ANIS is
+       the validated, clean detector (seed1: drift 119/299, jump
+       151/299, vs normal 15/299 -- see the anis_alarm fire-point
+       analysis). Raw per-step lambda_k magnitude is NOT clean on its
+       own (drift and normal came out statistically identical: same
+       mean 1.20, same max 4.2598, same std). So ANIS decides WHETHER
+       to look; lambda_k (when computed) decides HOW MUCH.
+
+       When ANIS didn't flag anything, skip compute_lambda_k() (the
+       ~680 multiply-adds + 10 divisions) entirely and just call the
+       plain library predict -- identical to main_ekf_stf.c/
+       main_ekf_new.c for that step. */
+    double lambda_k = 1.0;
+
+    if (anis_prev > ANIS_THRESHOLD) {
+        double FPFt[EKF_N*EKF_N];
+        lambda_k = compute_lambda_k(F, ekf.P, H, R_mat, FPFt);
+
+        /* EXCLUSIVE BRANCH 2: only actually inflate P when lambda_k
+           came back genuinely above its floor of 1.0 -- ANIS being
+           elevated doesn't guarantee the STF check itself finds
+           anything (they're different statistics). If lambda_k
+           landed exactly at 1.0, use the FPFt already computed
+           rather than re-deriving it via a second call. */
+        memcpy(ekf.x, fx, EKF_N * sizeof(double));
+        if (lambda_k > 1.0) {
+            for (i = 0; i < EKF_N * EKF_N; i++)
+                ekf.P[i] = lambda_k * FPFt[i] + Q_mat[i];
+        } else {
+            for (i = 0; i < EKF_N * EKF_N; i++)
+                ekf.P[i] = FPFt[i] + Q_mat[i];
+        }
+    } else {
+        ekf_predict(&ekf, fx, F, Q_mat);
+    }
 
     int ok = ekf_update(&ekf, z_meas, hx, H, R_mat);
 
@@ -424,6 +465,7 @@ static void ekf_step(int t,
     double nis  = compute_nis(inn, H, ekf.P, R_mat);
     window_push(nis);
     double anis = window_mean();
+    anis_prev = anis;   // for the NEXT call's branch decision
 
     int nis_alarm  = (nis  > NIS_THRESHOLD)  ? 1 : 0;
     int anis_alarm = (anis > ANIS_THRESHOLD) ? 1 : 0;
