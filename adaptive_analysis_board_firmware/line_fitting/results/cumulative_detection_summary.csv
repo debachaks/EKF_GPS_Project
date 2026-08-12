@@ -1,0 +1,17 @@
+counter,mode,n_runs,n_count_only,n_cusum_only,n_or
+hpmcounter10,drift,20,4,5,5
+hpmcounter10,jump,20,4,15,15
+hpmcounter3,drift,20,3,4,4
+hpmcounter3,jump,20,3,13,13
+hpmcounter4,drift,20,3,4,4
+hpmcounter4,jump,20,3,13,13
+hpmcounter5,drift,20,4,5,5
+hpmcounter5,jump,20,5,14,14
+hpmcounter6,drift,20,0,1,1
+hpmcounter6,jump,20,0,2,2
+hpmcounter7,drift,20,0,0,0
+hpmcounter7,jump,20,0,0,0
+hpmcounter8,drift,20,4,5,5
+hpmcounter8,jump,20,6,15,15
+hpmcounter9,drift,20,3,1,3
+hpmcounter9,jump,20,4,4,4
