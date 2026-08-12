@@ -1,5 +1,0 @@
-mode,n_flagged,n_runs,detection_rate
-drift,2,20,0.1
-jump,0,20,0.0
-normal,2,20,0.1
-replay,1,20,0.05
