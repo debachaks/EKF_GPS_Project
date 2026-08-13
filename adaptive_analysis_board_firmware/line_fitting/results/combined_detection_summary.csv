@@ -7,8 +7,8 @@ hpmcounter4,drift,20,1,5,1,7,0,0
 hpmcounter4,jump,20,10,18,1,20,0,0
 hpmcounter5,drift,20,2,5,2,8,1,0
 hpmcounter5,jump,20,10,17,0,20,2,0
-hpmcounter6,drift,20,2,0,2,3,1,0
-hpmcounter6,jump,20,3,0,3,4,2,0
+hpmcounter6,drift,20,2,5,1,7,1,0
+hpmcounter6,jump,20,3,5,2,7,2,1
 hpmcounter7,drift,20,0,0,0,0,0,0
 hpmcounter7,jump,20,0,0,0,0,0,0
 hpmcounter8,drift,20,0,4,3,7,0,0

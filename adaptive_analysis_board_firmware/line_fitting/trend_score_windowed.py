@@ -36,6 +36,14 @@ SUMMARY_OUT_PATH = os.path.join(RESULTS_DIR, "trend_score_detection_summary.csv"
 WINDOW = 10
 STEP = 1
 PERCENTILE = 95
+EPS = 1e-20   # avoids exact 0/0 (NaN) when a window is perfectly flat
+              # (sigma_eps2==0, beta==0 too in every observed case in this
+              # dataset -- so D naturally comes out 0, not undefined).
+              # Negligible next to any real nonzero variance: the smallest
+              # observed genuine (nonzero) se_beta in this data corresponds
+              # to sigma_eps2 ~ 1e-36 * SS_S, and typical values are
+              # ~1e-7 * SS_S -- EPS=1e-20 sits far below both, so it can
+              # only ever matter for windows that were already exactly 0.
 
 _S = np.arange(WINDOW, dtype=float)
 _S_BAR = _S.mean()
@@ -57,8 +65,8 @@ def windowed_d(z_values):
         fitted = alpha + beta * _S
         resid = window - fitted
         sigma_eps2 = np.sum(resid**2) / (WINDOW - 2)
-        se_beta = np.sqrt(sigma_eps2 / _SS_S)
-        d = abs(beta / se_beta) if se_beta > 0 else np.nan
+        se_beta = np.sqrt(sigma_eps2 / _SS_S + EPS)
+        d = abs(beta / se_beta)
         results.append((start, beta, d))
     return results
 

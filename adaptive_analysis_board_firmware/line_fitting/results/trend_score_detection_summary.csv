@@ -7,8 +7,8 @@ hpmcounter4,drift,5,20
 hpmcounter4,jump,18,20
 hpmcounter5,drift,5,20
 hpmcounter5,jump,17,20
-hpmcounter6,drift,0,20
-hpmcounter6,jump,0,20
+hpmcounter6,drift,5,20
+hpmcounter6,jump,5,20
 hpmcounter7,drift,0,20
 hpmcounter7,jump,0,20
 hpmcounter8,drift,4,20
