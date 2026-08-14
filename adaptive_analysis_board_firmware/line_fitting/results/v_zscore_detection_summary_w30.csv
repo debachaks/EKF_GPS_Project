@@ -1,0 +1,17 @@
+counter,mode,n_detected,n_runs
+hpmcounter10,drift,11,20
+hpmcounter10,jump,20,20
+hpmcounter3,drift,11,20
+hpmcounter3,jump,20,20
+hpmcounter4,drift,12,20
+hpmcounter4,jump,20,20
+hpmcounter5,drift,12,20
+hpmcounter5,jump,20,20
+hpmcounter6,drift,0,20
+hpmcounter6,jump,1,20
+hpmcounter7,drift,0,20
+hpmcounter7,jump,0,20
+hpmcounter8,drift,12,20
+hpmcounter8,jump,20,20
+hpmcounter9,drift,15,20
+hpmcounter9,jump,14,20
