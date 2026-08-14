@@ -14,14 +14,27 @@ threshold the scale should extend before clipping to full red.
 
 K is chosen PER METRIC (not one shared constant like the existing scripts'
 VMAX=3.0), from the actual max(value/threshold) observed across all
-normal/jump/drift runs in this dataset (results/combined_detection_windowed.csv),
-with a little headroom -- rather than an arbitrary shared cap:
+normal/jump/drift runs in this dataset, with a little headroom -- rather
+than an arbitrary shared cap:
 
     z_stat: observed max ratio ~2.14  -> K_Z = 2.5
     D:      observed max ratio ~4.71  -> K_D = 5.0   (a shared K=3.0 would
                                                         clip real D values)
-    V:      observed max ratio ~1.47  -> K_V = 2.0   (a shared K=3.0 wastes
-                                                        most of the scale)
+
+V row uses the z-scored, W_V=50 variant (v_zscore_w50.py: z_V standardized
+against its own normal-mode baseline) instead of variability_metric.py's
+plain V -- found to be a much stronger detector (drift 60-65% vs 0-15%,
+jump 100% vs near-0% on hpmcounter3/4/5/8/10). z_stat and D stay at W=10,
+unchanged; only V's data source/window size changed. Deliberate tradeoff:
+W=50 blends a sixth of the whole 300-iteration run into every window, so
+this row shows overall run "shape" rather than precise attack-onset
+timing the way the W=10 z_stat/D rows do -- the first valid window doesn't
+end until iteration 49. z_V's ratio range is much wider than plain V's
+(max ~15.6x threshold, 99th pct ~8.9x, vs plain V's ~1.47x), so K_V=10 (a
+little headroom above the 99th percentile) is used instead of the raw
+max, so the rare extreme outlier doesn't wash out the rest of the scale:
+
+    z_V:    99th pct ratio ~8.9  -> K_V = 10
 """
 
 import os
@@ -36,11 +49,18 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 RESULTS_DIR = os.path.join(SCRIPT_DIR, "results")
 WINDOWED_PATH = os.path.join(RESULTS_DIR, "combined_detection_windowed.csv")
 THRESHOLD_PATH = os.path.join(RESULTS_DIR, "combined_detection_thresholds.csv")
+V_WINDOWED_PATH = os.path.join(RESULTS_DIR, "v_zscore_w50.csv")
+V_THRESHOLD_PATH = os.path.join(RESULTS_DIR, "v_zscore_threshold_w50.csv")
 PLOT_DIR = os.path.join(SCRIPT_DIR, "plots_heatmap")
 
 TARGET_COUNTERS = ["hpmcounter3", "hpmcounter4", "hpmcounter8", "hpmcounter10"]
 MODES = ["normal", "jump", "drift"]
-METRICS = [("z_stat", "h_z", "z", 2.5), ("D", "h_D", "D", 5.0), ("V", "h_V", "V", 2.0)]
+# (value_col, thresh_col, label, k, "windowed"|"v_windowed" data source)
+METRICS = [
+    ("z_stat", "h_z", "z", 2.5, "windowed"),
+    ("D", "h_D", "D", 5.0, "windowed"),
+    ("z_V", "h_zV", "V (W=50)", 10.0, "v_windowed"),
+]
 ATTACK_START = 150
 
 CMAP = "RdYlGn_r"
@@ -61,7 +81,7 @@ def seed_sort_key(s):
     return int(m.group(1)) if m else s
 
 
-def make_figure(windowed, thresholds, test_seed):
+def make_figure(data_sources, threshold_sources, test_seed):
     n = len(TARGET_COUNTERS)
     fig = plt.figure(figsize=(18, 12))
     gs = fig.add_gridspec(
@@ -70,7 +90,10 @@ def make_figure(windowed, thresholds, test_seed):
         wspace=0.15,
     )
 
-    for row, (value_col, thresh_col, label, k) in enumerate(METRICS):
+    for row, (value_col, thresh_col, label, k, source) in enumerate(METRICS):
+        windowed = data_sources[source]
+        thresholds = threshold_sources[source]
+
         series = {
             (counter, mode): get_series(
                 windowed, counter, value_col, mode,
@@ -126,9 +149,9 @@ def make_figure(windowed, thresholds, test_seed):
             cbar.ax.tick_params(labelsize=6)
 
     fig.suptitle(
-        f"hpmcounter3/4/8/10: z / D / V, raw values ({test_seed})\n"
-        "(color scale per counter: threshold h_z/h_D/h_V sits at the MIDDLE "
-        "(yellow); vmax = 2.5x/5x/2x threshold per metric, from observed data range)",
+        f"hpmcounter3/4/8/10: z (W=10) / D (W=10) / V (z-scored, W=50), raw values ({test_seed})\n"
+        "(color scale per counter: threshold sits at the MIDDLE (yellow); "
+        "vmax = 2.5x/5x/10x threshold per metric, from observed data range)",
         fontsize=14,
     )
 
@@ -142,10 +165,15 @@ def main():
     os.makedirs(PLOT_DIR, exist_ok=True)
     windowed = pd.read_csv(WINDOWED_PATH)
     thresholds = pd.read_csv(THRESHOLD_PATH).set_index("counter")
+    v_windowed = pd.read_csv(V_WINDOWED_PATH)
+    v_thresholds = pd.read_csv(V_THRESHOLD_PATH).set_index("counter")
+
+    data_sources = {"windowed": windowed, "v_windowed": v_windowed}
+    threshold_sources = {"windowed": thresholds, "v_windowed": v_thresholds}
 
     seeds = sorted(windowed["seed"].unique(), key=seed_sort_key)
     for test_seed in seeds:
-        make_figure(windowed, thresholds, test_seed)
+        make_figure(data_sources, threshold_sources, test_seed)
 
 
 if __name__ == "__main__":

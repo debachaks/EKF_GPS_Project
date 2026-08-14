@@ -1,12 +1,15 @@
 """Same as combined_detection.py, but built on the WINDOW=20 versions of D
 and V (trend_score_windowed_w20.py, variability_metric_w20.py) instead of
 the WINDOW=10 ones. Outputs go to separate _w20-suffixed files.
+
+z_stat/h_z use z_metric.py's rolling-mean + flat-pooled-Q95 definition
+(same as combined_detection.py) -- h_z does NOT change with window size
+(it's built from raw, unwindowed z), only the W=20 rolling mean z_bar does.
 """
 
 import os
 import sys
 
-import numpy as np
 import pandas as pd
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -14,6 +17,7 @@ sys.path.insert(0, SCRIPT_DIR)
 
 from trend_score_windowed_w20 import WINDOW, windowed_d  # noqa: E402
 from variability_metric_w20 import compute_variation  # noqa: E402
+from z_metric import build_zmean_threshold, windowed_zmean  # noqa: E402
 
 RESULTS_DIR = os.path.join(SCRIPT_DIR, "results")
 TIMESERIES_PATH = os.path.join(RESULTS_DIR, "zscore_timeseries.csv")
@@ -26,17 +30,6 @@ STEP = 1
 PERCENTILE = 95
 
 
-def windowed_z(z_values):
-    n = len(z_values)
-    results = []
-    for start in range(0, n - WINDOW + 1, STEP):
-        window = z_values[start:start + WINDOW]
-        if np.any(np.isnan(window)):
-            continue
-        results.append((start, np.max(np.abs(window))))
-    return results
-
-
 def compute_all_windows(ts):
     rows = []
     for (counter, mode, seed), group in ts.groupby(["counter", "mode", "seed"]):
@@ -44,7 +37,7 @@ def compute_all_windows(ts):
         z = group["z"].to_numpy(dtype=float)
         iters = group["iter"].to_numpy()
 
-        z_by_start = dict(windowed_z(z))
+        z_by_start = {start: abs(zbar) for start, zbar in windowed_zmean(z, WINDOW, STEP)}
         d_by_start = {start: d for start, _beta, d in windowed_d(z)}
         v_by_start = {start: v for start, _variance, v in compute_variation(z)}
 
@@ -60,15 +53,17 @@ def compute_all_windows(ts):
     return pd.DataFrame(rows)
 
 
-def build_thresholds(windowed_df):
+def build_thresholds(windowed_df, ts):
     normal = windowed_df[windowed_df["mode"] == "normal"]
-    per_run_max = normal.groupby(["counter", "seed"])[["z_stat", "D", "V"]].max().reset_index()
+    per_run_max = normal.groupby(["counter", "seed"])[["D", "V"]].max().reset_index()
     thresholds = (
-        per_run_max.groupby("counter")[["z_stat", "D", "V"]]
+        per_run_max.groupby("counter")[["D", "V"]]
         .quantile(PERCENTILE / 100)
-        .rename(columns={"z_stat": "h_z", "D": "h_D", "V": "h_V"})
+        .rename(columns={"D": "h_D", "V": "h_V"})
         .reset_index()
     )
+    h_z = build_zmean_threshold(ts, counters=thresholds["counter"].unique())
+    thresholds = thresholds.merge(h_z, on="counter")[["counter", "h_z", "h_D", "h_V"]]
     return thresholds
 
 
@@ -80,9 +75,9 @@ def main():
     windowed_df.to_csv(WINDOWED_OUT_PATH, index=False)
     print(f"Saved {WINDOWED_OUT_PATH} ({len(windowed_df)} rows)")
 
-    thresholds = build_thresholds(windowed_df)
+    thresholds = build_thresholds(windowed_df, ts)
     thresholds.to_csv(THRESHOLD_OUT_PATH, index=False)
-    print("\nThresholds (W=20) (95th percentile of normal runs' max), per counter:")
+    print("\nThresholds (W=20) (h_z: flat-pooled Q95; h_D/h_V: 95th pct of normal runs' max), per counter:")
     print(thresholds.to_string(index=False))
     print(f"Saved {THRESHOLD_OUT_PATH}")
 

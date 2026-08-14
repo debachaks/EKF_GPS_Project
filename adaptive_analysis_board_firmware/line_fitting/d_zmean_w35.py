@@ -10,17 +10,25 @@ dilution of a fitted slope.
 
     z_mean(window) = mean(z_i)  for i in the window
 
-Threshold h_zmean per counter = 95th percentile of {max over window
-positions of z_mean, per normal run} -- same calibration convention as
-every other metric here.
+Threshold h_zmean per counter = z_metric.py's flat-pooled Q95 (95th
+percentile of every raw z value pooled across every normal trial's every
+iteration) -- NOT the per-trial-max-then-percentile method still used for
+h_D. See z_metric.py's docstring for why z is deliberately calibrated
+differently from D. h_zmean is independent of WINDOW (built from raw,
+unwindowed z), unlike h_D.
 """
 
 import os
+import sys
 
 import numpy as np
 import pandas as pd
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, SCRIPT_DIR)
+
+from z_metric import build_zmean_threshold  # noqa: E402
+
 RESULTS_DIR = os.path.join(SCRIPT_DIR, "results")
 TIMESERIES_PATH = os.path.join(RESULTS_DIR, "zscore_timeseries.csv")
 
@@ -75,16 +83,18 @@ def compute_all_windows(ts):
     return pd.DataFrame(rows)
 
 
-def build_thresholds(df):
-    normal = df[df["mode"] == "normal"].copy()
-    normal["abs_z_mean"] = normal["z_mean"].abs()
-    per_run_max = normal.groupby(["counter", "seed"])[["D", "abs_z_mean"]].max().reset_index()
+def build_thresholds(df, ts):
+    normal = df[df["mode"] == "normal"]
+    per_run_max = normal.groupby(["counter", "seed"])["D"].max().reset_index()
     thresholds = (
-        per_run_max.groupby("counter")[["D", "abs_z_mean"]]
+        per_run_max.groupby("counter")["D"]
         .quantile(PERCENTILE / 100)
-        .rename(columns={"D": "h_D", "abs_z_mean": "h_zmean"})
-        .reset_index()
+        .reset_index(name="h_D")
     )
+    h_zmean = build_zmean_threshold(ts, counters=thresholds["counter"].unique()).rename(
+        columns={"h_z": "h_zmean"}
+    )
+    thresholds = thresholds.merge(h_zmean, on="counter")[["counter", "h_zmean", "h_D"]]
     return thresholds
 
 
@@ -95,7 +105,7 @@ def main():
     df.to_csv(D_OUT_PATH, index=False)
     print(f"Saved {D_OUT_PATH} ({len(df)} rows)")
 
-    thresholds = build_thresholds(df)
+    thresholds = build_thresholds(df, ts)
     thresholds.to_csv(THRESHOLD_OUT_PATH, index=False)
     print(f"\nThresholds (W={WINDOW}), per counter:")
     print(thresholds.to_string(index=False))
