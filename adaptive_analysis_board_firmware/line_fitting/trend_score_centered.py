@@ -11,10 +11,30 @@ rather than assuming the "expected" normal slope is zero everywhere.
 This is a NEW, standalone script -- trend_score_windowed.py (the original
 D = |beta/SE(beta)|) is untouched.
 
-Threshold calibration is UNCHANGED from trend_score_windowed.py's
-convention: h_D = 95th percentile of {max over window positions of
-D_centered, per normal run} -- same per-trial-max-then-percentile method,
-just applied to this new centered statistic.
+Threshold calibration: per-trial-max-then-percentile (same as the
+original trend_score_windowed.py) -- h_D = 95th percentile of {max over
+window positions of D_centered, per normal run}.
+
+This was investigated and deliberately kept, not just left over:
+  - A flat-pooled threshold (z_metric.py's convention: 95th percentile
+    of every normal run's D_centered value, pooled across all 20 trials
+    and window positions) was tried first, since the old z metric's
+    max-based threshold turned out to compound two extreme-value
+    operations into an effectively ~99th-percentile cutoff. But D is
+    far noisier per-window than z's rolling mean (se_beta can be tiny
+    on near-flat windows, spiking D), so flat-pooling + "any window
+    over threshold" fires on ~20/20 normal runs on most counters --
+    useless for discrimination.
+  - Requiring >=K windows over the flat-pooled threshold (K up to 10,
+    out of ~150 post-attack windows) still left normal runs firing at
+    13-16/20 on most counters -- doesn't fix it.
+  - Lowering the per-trial-max method's percentile (0.70-0.85 instead
+    of 0.95) isn't a structural fix either: it's a pure slider that
+    raises attack detection and normal false positives together (e.g.
+    at 0.85, normal FP rises to 2-4/20 per counter), with hpmcounter9
+    staying completely dead at 0/20 for both attack modes regardless.
+  - The original 0.95 per-trial-max threshold was the only one of these
+    that kept normal-run false positives near 0, so it's kept as-is.
 
 WINDOW=10, matching the original trend_score_windowed.py.
 """
