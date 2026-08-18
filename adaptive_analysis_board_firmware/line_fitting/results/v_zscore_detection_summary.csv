@@ -1,0 +1,17 @@
+counter,mode,n_runs,n_detected_pooled,n_detected_trialmax
+hpmcounter10,drift,20,6,1
+hpmcounter10,jump,20,19,11
+hpmcounter3,drift,20,6,1
+hpmcounter3,jump,20,18,12
+hpmcounter4,drift,20,5,1
+hpmcounter4,jump,20,17,12
+hpmcounter5,drift,20,6,1
+hpmcounter5,jump,20,19,12
+hpmcounter6,drift,20,2,2
+hpmcounter6,jump,20,3,3
+hpmcounter7,drift,20,0,0
+hpmcounter7,jump,20,0,0
+hpmcounter8,drift,20,6,1
+hpmcounter8,jump,20,19,11
+hpmcounter9,drift,20,6,3
+hpmcounter9,jump,20,10,9

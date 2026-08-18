@@ -26,6 +26,12 @@ Detection rule: |g(k)| > Qgs for any k => flagged.
 Sanity-checks sigma_G0 for near-zero collapse before trusting results --
 see the earlier hpmcounter9/V lesson (division by a near-zero baseline
 std can fabricate huge, meaningless g values).
+
+Detection: a run counts as detected only if a flag occurs at or after the
+attack onset (iter >= 150, per seed_old/test_seed_pre_post_attack_analysis.py)
+-- pre-onset flags are excluded so the rate isn't inflated by false fires
+that happen before the attack is even injected (same correction applied
+to D_final/V_final after finding real pre-onset contamination there).
 """
 
 import os
@@ -41,6 +47,7 @@ L = 10
 STEP = 1
 PERCENTILE = 95
 SIGMA_FLOOR = 1e-6   # below this, sigma_G0 is treated as too fragile to trust
+ONSET_ITER = 150
 
 G_OUT_PATH = os.path.join(RESULTS_DIR, f"window_diff_G_L{L}.csv")
 BASELINE_OUT_PATH = os.path.join(RESULTS_DIR, f"window_diff_baseline_L{L}.csv")
@@ -154,13 +161,14 @@ def main():
         gscore_df["mode"].isin(["jump", "drift"]) & (~gscore_df["sigma_fragile"])
     ].merge(thresholds, on="counter")
     attack["flagged"] = attack["g"].abs() > attack["Qgs"]
+    attack["post_onset_flag"] = attack["flagged"] & (attack["window_end_iter"] >= ONSET_ITER)
     attack.to_csv(FLAGGED_OUT_PATH, index=False)
     print(f"\nSaved {FLAGGED_OUT_PATH} ({len(attack)} rows)")
 
-    run_detected = attack.groupby(["counter", "mode", "seed"])["flagged"].any().reset_index(name="detected")
+    run_detected = attack.groupby(["counter", "mode", "seed"])["post_onset_flag"].any().reset_index(name="detected")
     summary = run_detected.groupby(["counter", "mode"])["detected"].agg(n_detected="sum", n_runs="count").reset_index()
     summary.to_csv(SUMMARY_OUT_PATH, index=False)
-    print(f"\nPer-run detection summary (window-diff g metric, L={L}):")
+    print(f"\nPer-run detection summary (window-diff g metric, L={L}, post-onset-only):")
     print(summary.to_string(index=False))
     print(f"Saved {SUMMARY_OUT_PATH}")
 

@@ -1,11 +1,10 @@
-"""Runs the z-scored V detector (same math as v_zscore_w50.py) at several
-window sizes in one pass, specifically to chase hpmcounter9's apparent
-sweet spot below W_V=30 (it jumped from 8/20 to 15/20 drift going from
-W_V=50 to W_V=30 -- does it keep improving narrower, or was 30 the peak?).
+"""Window-size sweep for the new V metric based on windowed z-energy.
 
-Also reports, for each mode, the UNION across counters if each counter
-uses its OWN best window size rather than one shared window for all --
-i.e. hpmcounter9 at its best W_V, strong counters at theirs.
+This mirrors the earlier sweep pattern but uses the logic from
+v_zscore_metric.py: the windowed statistic is the average of z^2 within the
+window, compressed via log(1 + mean(z^2)). It is then normalized against the
+20 normal trials at the same window position using the robust
+max(sigma, floor) denominator.
 """
 
 import os
@@ -16,109 +15,125 @@ import pandas as pd
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 RESULTS_DIR = os.path.join(SCRIPT_DIR, "results")
 TIMESERIES_PATH = os.path.join(RESULTS_DIR, "zscore_timeseries.csv")
+SWEEP_OUT_PATH = os.path.join(RESULTS_DIR, "v_zscore_sweep.csv")
 
-WINDOWS = [10, 15, 20, 25, 30]
+WINDOWS = [5, 10, 15, 20, 25, 30]
 STEP = 1
 PERCENTILE = 95
+EPS = 1e-9
+STRONG = ["hpmcounter3", "hpmcounter4", "hpmcounter5", "hpmcounter8", "hpmcounter10"]
 
 
-def compute_variation(z_values, window):
-    results = []
+def windowed_energy(z_values, window):
     n = len(z_values)
+    results = []
     for start in range(0, n - window + 1, STEP):
         w = z_values[start:start + window]
         if np.any(np.isnan(w)):
             continue
-        variance = np.var(w, ddof=1)
-        results.append((start, np.log1p(variance)))
+        e = np.mean(np.square(w))
+        v_e = np.log1p(e)
+        results.append((start, v_e))
     return results
 
 
-def compute_raw_v(ts, window):
+def run_one_window(ts, window):
     rows = []
-    for (counter, mode, seed), group in ts.groupby(["counter", "mode", "seed"]):
+    for (counter, mode, seed), group in ts[ts["counter"].isin(STRONG)].groupby(["counter", "mode", "seed"]):
         group = group.sort_values("iter")
-        z = group["z"].to_numpy()
+        z = group["z"].to_numpy(dtype=float)
         iters = group["iter"].to_numpy()
-        for start, v in compute_variation(z, window):
+        for start, v_e in windowed_energy(z, window):
             rows.append({
-                "counter": counter, "mode": mode, "seed": seed,
-                "window_end_iter": iters[start + window - 1], "V": v,
+                "counter": counter,
+                "mode": mode,
+                "seed": seed,
+                "window_end_iter": iters[start + window - 1],
+                "V_E": v_e,
             })
-    return pd.DataFrame(rows)
+    energy_df = pd.DataFrame(rows)
 
-
-def run_one_window(ts, counters, window):
-    v_df = compute_raw_v(ts, window)
-
-    zv_rows = []
-    for counter in counters:
-        c_data = v_df[v_df["counter"] == counter]
+    v_rows = []
+    for counter in STRONG:
+        c_data = energy_df[energy_df["counter"] == counter]
         normal_pivot = c_data[c_data["mode"] == "normal"].pivot(
-            index="seed", columns="window_end_iter", values="V"
+            index="seed", columns="window_end_iter", values="V_E"
         )
         mu = normal_pivot.mean(axis=0)
         sigma = normal_pivot.std(axis=0)
-        sigma_safe = sigma.where(sigma > 1e-9, 1e-9)
+        q10 = normal_pivot.quantile(0.10, axis=0)
+        floor = (q10 - mu).abs()
+        denom = np.maximum(sigma, floor)
+        denom_safe = denom.where(denom > EPS, EPS)
 
-        for (mode, seed), g in c_data.groupby(["mode", "seed"]):
-            g = g.set_index("window_end_iter").reindex(mu.index)
-            zv = (g["V"] - mu) / sigma_safe
-            for it, val in zv.items():
-                zv_rows.append({
-                    "counter": counter, "mode": mode, "seed": seed,
-                    "window_end_iter": it, "z_V": val,
+        for (mode, seed), grp in c_data.groupby(["mode", "seed"]):
+            grp = grp.set_index("window_end_iter").reindex(mu.index)
+            v_metric = (grp["V_E"] - mu).abs() / denom_safe
+            for it, val in v_metric.items():
+                v_rows.append({
+                    "counter": counter,
+                    "mode": mode,
+                    "seed": seed,
+                    "window_end_iter": it,
+                    "V_metric": val,
                 })
-    zv_df = pd.DataFrame(zv_rows)
+    v_df = pd.DataFrame(v_rows)
 
-    normal_zv = zv_df[zv_df["mode"] == "normal"]
-    per_run_max = normal_zv.groupby(["counter", "seed"])["z_V"].max().reset_index(name="M_j")
-    thresholds = (
-        per_run_max.groupby("counter")["M_j"]
-        .quantile(PERCENTILE / 100)
-        .reset_index(name="h_zV")
-    )
+    normal_v = v_df[v_df["mode"] == "normal"]
+    flat_pooled = normal_v.groupby("counter")["V_metric"].quantile(PERCENTILE / 100).reset_index(name="h_V_pooled")
+    per_trial_max = normal_v.groupby(["counter", "seed"])["V_metric"].max().reset_index(name="M_j")
+    per_trial = per_trial_max.groupby("counter")["M_j"].quantile(PERCENTILE / 100).reset_index(name="h_V_trialmax")
+    thresholds = flat_pooled.merge(per_trial, on="counter")
 
-    attack = zv_df[zv_df["mode"].isin(["jump", "drift"])].merge(thresholds, on="counter")
-    attack["flagged"] = attack["z_V"] > attack["h_zV"]
+    attack = v_df[v_df["mode"].isin(["jump", "drift"])].merge(thresholds, on="counter")
+    attack["flag_pooled"] = attack["V_metric"] > attack["h_V_pooled"]
+    attack["flag_trialmax"] = attack["V_metric"] > attack["h_V_trialmax"]
 
-    run_detected = attack.groupby(["counter", "mode", "seed"])["flagged"].any().reset_index(name="detected")
-    return run_detected
+    run_detected = attack.groupby(["counter", "mode", "seed"])[["flag_pooled", "flag_trialmax"]].any().reset_index()
+    summary = run_detected.groupby(["counter", "mode"]).agg(
+        n_runs=("seed", "count"),
+        n_detected_pooled=("flag_pooled", "sum"),
+        n_detected_trialmax=("flag_trialmax", "sum"),
+    ).reset_index()
+    return summary
 
 
 def main():
     ts = pd.read_csv(TIMESERIES_PATH)
-    counters = sorted(ts["counter"].unique(), key=lambda c: int(c.replace("hpmcounter", "")))
-    strong = ["hpmcounter3", "hpmcounter4", "hpmcounter5", "hpmcounter8", "hpmcounter10"]
-
-    all_results = {}
-    print("=== hpmcounter9 detection count by window size ===")
+    sweep_rows = []
     for w in WINDOWS:
-        run_detected = run_one_window(ts, counters, w)
-        all_results[w] = run_detected
+        summary = run_one_window(ts, w)
+        for _, row in summary.iterrows():
+            sweep_rows.append({
+                "window": w,
+                "counter": row["counter"],
+                "mode": row["mode"],
+                "detected_pooled": int(row["n_detected_pooled"]),
+                "detected_trialmax": int(row["n_detected_trialmax"]),
+            })
 
-        c9 = run_detected[run_detected["counter"] == "hpmcounter9"]
-        n_drift = c9[(c9["mode"] == "drift") & c9["detected"]]["seed"].nunique()
-        n_jump = c9[(c9["mode"] == "jump") & c9["detected"]]["seed"].nunique()
-        print(f"W_V={w:3d}:  drift {n_drift}/20   jump {n_jump}/20")
+    sweep_df = pd.DataFrame(sweep_rows)
+    sweep_df.to_csv(SWEEP_OUT_PATH, index=False)
+    print(f"Saved {SWEEP_OUT_PATH}")
 
-    # also add the already-computed W=50/70 numbers for context (from prior runs)
-    print("\n(for reference, already computed earlier: W_V=50 -> drift 8/20, jump 12/20;"
-          " W_V=70 -> drift 7/20, jump 9/20)")
+    for method in ["detected_trialmax", "detected_pooled"]:
+        print(f"\n=== {method} ===")
+        header = "Counter".ljust(14)
+        for w in WINDOWS:
+            header += f"W={w} drift".ljust(14)
+        for w in WINDOWS:
+            header += f"W={w} jump".ljust(13)
+        print(header)
 
-    best_w9 = max(WINDOWS, key=lambda w: all_results[w][
-        (all_results[w]["counter"] == "hpmcounter9") & (all_results[w]["mode"] == "drift") & all_results[w]["detected"]
-    ]["seed"].nunique())
-    print(f"\nBest window for hpmcounter9 drift among {WINDOWS}: W_V={best_w9}")
-
-    # union: hpmcounter9 at its best window, strong counters at W_V=50 (their established sweet spot)
-    w9_seeds = set(all_results[best_w9][
-        (all_results[best_w9]["counter"] == "hpmcounter9")
-        & (all_results[best_w9]["mode"] == "drift")
-        & all_results[best_w9]["detected"]
-    ]["seed"])
-
-    print(f"\nhpmcounter9 (W_V={best_w9}) drift-detected seeds: {sorted(w9_seeds, key=lambda s: int(s.replace('seed','')))}")
+        for c in STRONG:
+            row = c.ljust(14)
+            for w in WINDOWS:
+                v = sweep_df[(sweep_df["counter"] == c) & (sweep_df["window"] == w) & (sweep_df["mode"] == "drift")][method].values[0]
+                row += f"{v}/20".ljust(14)
+            for w in WINDOWS:
+                v = sweep_df[(sweep_df["counter"] == c) & (sweep_df["window"] == w) & (sweep_df["mode"] == "jump")][method].values[0]
+                row += f"{v}/20".ljust(13)
+            print(row)
 
 
 if __name__ == "__main__":
