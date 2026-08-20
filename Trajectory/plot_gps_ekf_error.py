@@ -13,9 +13,8 @@
      orange(t) = |z_t|_jump,SEED(t)    - meanz(t)
      green(t)  = |z_t|_drift,SEED(t)   - meanz(t)
 
-     REFERENCE_SEEDS is currently 9 (seed1-9_newMapping are the only
-     ones with data on disk so far, out of an eventual 20) -- rerun once
-     more seeds are added.
+     REFERENCE_SEEDS covers all 20 seeds now that seed1-20_newMapping
+     all have data on disk.
 
   2) e_EKF(t) = || P_hat_t - P_t^true || [m]  -- EKF position estimate's
      distance from ground truth, computed from filt_x/y/z and
@@ -34,7 +33,7 @@ PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
 PLOT_DIR = os.path.join(SCRIPT_DIR, "plots")
 
 SEED = 1
-REFERENCE_SEEDS = list(range(1, 10))  # seed1-9_newMapping -- only ones with data so far
+REFERENCE_SEEDS = list(range(1, 21))  # seed1-20_newMapping -- full set
 SEED_DIR = os.path.join(PROJECT_ROOT, "adaptive_analysis_board_firmware", "plots", f"seed{SEED}_newMapping")
 
 MODE_COLORS = {

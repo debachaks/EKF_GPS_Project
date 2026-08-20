@@ -1,40 +1,43 @@
-"""Same figure as heatmap_4counters.py (hpmcounter3/4/8/10, z_stat/D/V rows,
-normal/jump/drift columns, raw units, own color scale per counter) but with
-the threshold placed at the MIDDLE of the color scale instead of the top:
-0 -> green, threshold -> yellow/orange (exact color midpoint), further
-above threshold -> red. heatmap_4counters.py itself is left untouched;
-this is an alternate rendering for comparison.
+"""hpmcounter3/4/8/10 heatmap, D_final/G_final/V_final rows, normal/jump/
+drift columns, one PNG per seed (plus the normal column averaged across
+all 20 seeds) -- same visual format as the original z_stat/D/V(z-scored)
+version this replaces, but sourced from the window-diff-then-z-score
+"final" metric family (d_final_metric.py, g_final_metric.py,
+v_final_metric.py) instead.
 
-Uses matplotlib's TwoSlopeNorm(vmin=0, vcenter=threshold, vmax=threshold*K)
-per counter, in RAW units (not value/threshold like heatmap_detection.py) --
-vcenter always maps to the middle of the colormap regardless of the
-numeric gap to vmin/vmax, so forcing threshold to be the midpoint doesn't
-require vmax = 2*threshold; the real design choice is just how far past
-threshold the scale should extend before clipping to full red.
+Threshold placed at the MIDDLE of the color scale (matplotlib's
+TwoSlopeNorm(vmin=0, vcenter=threshold, vmax=threshold*K)): 0 -> green,
+threshold -> yellow/orange, further above threshold -> red. Color value
+is |score| (all three metrics are signed: score = (X_new - mu) / sigma),
+since detection itself thresholds on the absolute value.
 
-K is chosen PER METRIC (not one shared constant like the existing scripts'
-VMAX=3.0), from the actual max(value/threshold) observed across all
-normal/jump/drift runs in this dataset, with a little headroom -- rather
-than an arbitrary shared cap:
+Positions flagged sigma_fragile (near-zero baseline variance -- see each
+metric's own script for why those are excluded from thresholding/
+detection) are masked to NaN in get_series, then linearly interpolated
+across in make_figure so the row reads as a continuous strip instead of
+a blank gap. This is a visual smoothing only -- there is no real computed
+value at a fragile position, and detection/thresholding still excludes
+these positions entirely (see each metric's own script); the interpolated
+color is not evidence of a genuine signal there.
 
-    z_stat: observed max ratio ~2.14  -> K_Z = 2.5
-    D:      observed max ratio ~4.71  -> K_D = 5.0   (a shared K=3.0 would
-                                                        clip real D values)
+K is chosen PER METRIC from the 99th percentile of |score|/threshold
+observed across the target counters (not the raw max -- unlike the
+original z_stat/D, all three of these metrics have a handful of extreme
+outlier ratios in the hundreds, presumably from positions where sigma
+sits just above the 1e-6 fragility floor but is still small; the 99th
+percentile is a far more representative "how big does this normally get"
+number), with headroom so the rare high tail doesn't wash out the rest
+of the scale.
 
-V row uses the z-scored, W_V=50 variant (v_zscore_w50.py: z_V standardized
-against its own normal-mode baseline) instead of variability_metric.py's
-plain V -- found to be a much stronger detector (drift 60-65% vs 0-15%,
-jump 100% vs near-0% on hpmcounter3/4/5/8/10). z_stat and D stay at W=10,
-unchanged; only V's data source/window size changed. Deliberate tradeoff:
-W=50 blends a sixth of the whole 300-iteration run into every window, so
-this row shows overall run "shape" rather than precise attack-onset
-timing the way the W=10 z_stat/D rows do -- the first valid window doesn't
-end until iteration 49. z_V's ratio range is much wider than plain V's
-(max ~15.6x threshold, 99th pct ~8.9x, vs plain V's ~1.47x), so K_V=10 (a
-little headroom above the 99th percentile) is used instead of the raw
-max, so the rare extreme outlier doesn't wash out the rest of the scale:
+Window sizes are per-metric, not shared: D_final stays at W=10
+(d_final_metric.py), G_final and V_final use the W=5 variants
+(g_final_metric_w5.py, v_final_metric_w5.py) instead of their W=10
+default -- separate scripts/output files so the W=10 results (still used
+by g_final_sweep.py/v_final_sweep.py and other comparisons) aren't lost.
 
-    z_V:    99th pct ratio ~8.9  -> K_V = 10
+    D_final (W=10): 99th pct ratio ~2.4  -> K_D = 3.0
+    G_final (W=5):  99th pct ratio ~1.9  -> K_G = 2.5
+    V_final (W=5):  99th pct ratio ~1.1  -> K_V = 2.0
 """
 
 import os
@@ -47,27 +50,25 @@ from matplotlib.colors import TwoSlopeNorm
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 RESULTS_DIR = os.path.join(SCRIPT_DIR, "results")
-WINDOWED_PATH = os.path.join(RESULTS_DIR, "combined_detection_windowed.csv")
-THRESHOLD_PATH = os.path.join(RESULTS_DIR, "combined_detection_thresholds.csv")
-V_WINDOWED_PATH = os.path.join(RESULTS_DIR, "v_zscore_w50.csv")
-V_THRESHOLD_PATH = os.path.join(RESULTS_DIR, "v_zscore_threshold_w50.csv")
 PLOT_DIR = os.path.join(SCRIPT_DIR, "plots_heatmap")
 
 TARGET_COUNTERS = ["hpmcounter3", "hpmcounter4", "hpmcounter8", "hpmcounter10"]
 MODES = ["normal", "jump", "drift"]
-# (value_col, thresh_col, label, k, "windowed"|"v_windowed" data source)
+# (score_col, thresh_col, label, k, score_path, thresh_path)
 METRICS = [
-    ("z_stat", "h_z", "z", 2.5, "windowed"),
-    ("D", "h_D", "D", 5.0, "windowed"),
-    ("z_V", "h_zV", "V (W=50)", 10.0, "v_windowed"),
+    ("d", "H_d", "D_final (W=10)", 3.0, "d_final_dscore.csv", "d_final_thresholds.csv"),
+    ("g", "H_g", "G_final (W=5)", 2.5, "g_final_w5_gscore.csv", "g_final_w5_thresholds.csv"),
+    ("v", "H_v", "V_final (W=5)", 2.0, "v_final_w5_vscore.csv", "v_final_w5_thresholds.csv"),
 ]
 ATTACK_START = 150
 
 CMAP = "RdYlGn_r"
 
 
-def get_series(windowed, counter, value_col, mode, seed=None):
-    d = windowed[(windowed["counter"] == counter) & (windowed["mode"] == mode)]
+def get_series(scored, counter, value_col, mode, seed=None):
+    d = scored[(scored["counter"] == counter) & (scored["mode"] == mode)]
+    d = d.copy()
+    d[value_col] = d[value_col].abs().where(~d["sigma_fragile"])
     if seed is not None:
         d = d[d["seed"] == seed]
         s = d.set_index("window_end_iter")[value_col].sort_index()
@@ -90,21 +91,19 @@ def make_figure(data_sources, threshold_sources, test_seed):
         wspace=0.15,
     )
 
-    for row, (value_col, thresh_col, label, k, source) in enumerate(METRICS):
-        windowed = data_sources[source]
-        thresholds = threshold_sources[source]
+    for row, (value_col, thresh_col, label, k, _, _) in enumerate(METRICS):
+        scored = data_sources[label]
+        thresholds = threshold_sources[label]
 
         series = {
             (counter, mode): get_series(
-                windowed, counter, value_col, mode,
+                scored, counter, value_col, mode,
                 seed=(test_seed if mode != "normal" else None),
             )
             for counter in TARGET_COUNTERS for mode in MODES
         }
         iters = sorted(set().union(*[s.index for s in series.values()]))
 
-        # threshold sits at the color midpoint (vcenter); vmax = k * threshold,
-        # k chosen per metric from the real observed data range (see docstring)
         counter_norm = {
             counter: TwoSlopeNorm(
                 vmin=0.0,
@@ -122,6 +121,11 @@ def make_figure(data_sources, threshold_sources, test_seed):
 
             for i, counter in enumerate(TARGET_COUNTERS):
                 s = series[(counter, mode)].reindex(iters)
+                # sigma-fragile positions are NaN here (masked in get_series);
+                # interpolate across them so the row reads continuously instead
+                # of leaving a blank gap -- this is purely a visual smoothing
+                # of the color, not a real computed value at that position.
+                s = s.interpolate(method="linear", limit_direction="both")
                 data = s.to_numpy().reshape(1, -1)
                 extent = [x0, x1, n - i, n - i - 1]
                 ax.imshow(data, aspect="auto", cmap=CMAP, norm=counter_norm[counter], extent=extent)
@@ -149,9 +153,10 @@ def make_figure(data_sources, threshold_sources, test_seed):
             cbar.ax.tick_params(labelsize=6)
 
     fig.suptitle(
-        f"hpmcounter3/4/8/10: z (W=10) / D (W=10) / V (z-scored, W=50), raw values ({test_seed})\n"
+        f"hpmcounter3/4/8/10: D_final (W=10) / G_final (W=5) / V_final (W=5), |score| ({test_seed})\n"
         "(color scale per counter: threshold sits at the MIDDLE (yellow); "
-        "vmax = 2.5x/5x/10x threshold per metric, from observed data range)",
+        "vmax = 3x/2.5x/2x threshold per metric, from observed 99th-percentile ratio; "
+        "sigma-fragile positions interpolated, not real values)",
         fontsize=14,
     )
 
@@ -163,15 +168,15 @@ def make_figure(data_sources, threshold_sources, test_seed):
 
 def main():
     os.makedirs(PLOT_DIR, exist_ok=True)
-    windowed = pd.read_csv(WINDOWED_PATH)
-    thresholds = pd.read_csv(THRESHOLD_PATH).set_index("counter")
-    v_windowed = pd.read_csv(V_WINDOWED_PATH)
-    v_thresholds = pd.read_csv(V_THRESHOLD_PATH).set_index("counter")
 
-    data_sources = {"windowed": windowed, "v_windowed": v_windowed}
-    threshold_sources = {"windowed": thresholds, "v_windowed": v_thresholds}
+    data_sources, threshold_sources = {}, {}
+    for _, thresh_col, label, _, score_path, thresh_path in METRICS:
+        scored = pd.read_csv(os.path.join(RESULTS_DIR, score_path))
+        thresholds = pd.read_csv(os.path.join(RESULTS_DIR, thresh_path)).set_index("counter")
+        data_sources[label] = scored
+        threshold_sources[label] = thresholds
 
-    seeds = sorted(windowed["seed"].unique(), key=seed_sort_key)
+    seeds = sorted(data_sources["D_final (W=10)"]["seed"].unique(), key=seed_sort_key)
     for test_seed in seeds:
         make_figure(data_sources, threshold_sources, test_seed)
 
