@@ -25,6 +25,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SEED_DIRS = sorted(
     os.path.dirname(p) for p in
     glob.glob(os.path.join(SCRIPT_DIR, "plots", "seed*", "normal_hpc.csv"))
+    + glob.glob(os.path.join(SCRIPT_DIR, "plots", "seed*_newMapping", "normal_hpc*.csv"))
 )
 
 COUNTERS = [f"hpmcounter{i}" for i in range(3, 11)]
@@ -46,11 +47,11 @@ def hex_to_int(val):
 
 
 def load(data_dir, mode):
-    path = os.path.join(data_dir, f"{mode}_hpc.csv")
-    df = pd.read_csv(path)
+    matches = glob.glob(os.path.join(data_dir, f"{mode}_hpc*.csv"))
+    df = pd.read_csv(matches[0])
     for counter in COUNTERS:
         df[counter] = df[counter].map(hex_to_int)
-    return df
+    return df.sort_values("iter").reset_index(drop=True)
 
 
 def style_axes(ax):
