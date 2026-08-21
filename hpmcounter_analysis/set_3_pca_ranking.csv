@@ -1,9 +1,0 @@
-counter,importance,std_of_rate,mean_of_rate,event
-hpmcounter5,0.14088403231184984,2.3097100058546612e-05,2.3699190270075707e-05,d-cache writeback requests (M3: memory)
-hpmcounter4,0.14058449159094707,0.00011289152577641671,0.00011934136314643163,d-cache blocked cycles (M3: memory stalls)
-hpmcounter3,0.14049437549451632,2.7415371640387485e-05,2.4397324335460724e-05,d-cache misses (M3: memory)
-hpmcounter8,0.12985487544506333,0.00045339982116835597,0.0011955658976592785,cond-branch mispredictions (ANCHOR: cross-check vs set1)
-hpmcounter7,0.1295428478030156,0.00010385256532382135,4.0189989508436266e-05,long-latency interlock (ANCHOR: cross-check vs set1)
-hpmcounter9,0.1278961087458757,0.010213263439902394,0.4843126480420668,int arithmetic retired (ANCHOR: activity reference)
-hpmcounter10,0.117230950948979,8.082144231218823e-06,5.582048258075477e-05,pipeline flushes (ANCHOR: negative control)
-hpmcounter6,0.0,0.0,0.0,"mul/div interlock (M4: expect ~0, pure FP)"
