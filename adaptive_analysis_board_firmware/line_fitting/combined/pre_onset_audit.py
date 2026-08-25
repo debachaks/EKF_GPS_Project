@@ -39,6 +39,11 @@ METRICS = [
 ]
 MODES = ["normal", "jump", "drift"]
 
+# hpmcounter9 excluded: established near-negative-control, noise-contaminated
+# (see the per-counter audit above) -- pooling it in would swamp the
+# mode-comparison signal this second audit is actually looking for.
+USABLE_COUNTERS = ["hpmcounter3", "hpmcounter4", "hpmcounter5", "hpmcounter8", "hpmcounter10"]
+
 
 def audit_metric(label, score_col, thresh_col, score_path, thresh_path):
     scored = pd.read_csv(os.path.join(RESULTS_DIR, score_path))
@@ -74,6 +79,32 @@ def audit_metric(label, score_col, thresh_col, score_path, thresh_path):
     return rows
 
 
+def audit_mode_pooled_rate(label, score_col, thresh_col, score_path, thresh_path):
+    """Pre-onset flag RATE (not share-of-flags) by mode, pooled across
+    USABLE_COUNTERS -- checks whether pre-onset activation is actually
+    mode-independent, which the post-onset-only detection rule implicitly
+    assumes (paper Section 9, item 6 / Table 4).
+    """
+    scored = pd.read_csv(os.path.join(RESULTS_DIR, score_path))
+    thresholds = pd.read_csv(os.path.join(RESULTS_DIR, thresh_path))
+
+    df = scored[scored["counter"].isin(USABLE_COUNTERS)].merge(thresholds, on="counter")
+    df["flagged"] = (~df["sigma_fragile"]) & (df[score_col].abs() > df[thresh_col])
+    pre = df[df["window_end_iter"] < ONSET_ITER]
+
+    rows = []
+    for mode, grp in pre.groupby("mode"):
+        n_flagged = int(grp["flagged"].sum())
+        n_total = len(grp)
+        rows.append({
+            "metric": label, "mode": mode,
+            "n_pre_onset_flagged_windows": n_flagged,
+            "n_pre_onset_windows_total": n_total,
+            "pct_pre_onset_windows_flagged": round(100 * n_flagged / n_total, 4) if n_total else float("nan"),
+        })
+    return rows
+
+
 def main():
     all_rows = []
     for label, score_col, thresh_col, score_path, thresh_path in METRICS:
@@ -92,6 +123,21 @@ def main():
         print(f"\n=== {label} ===")
         print(out[out["metric"] == label].drop(columns="metric").to_string(index=False))
     print(f"\nSaved {out_path}")
+
+    mode_rows = []
+    for label, score_col, thresh_col, score_path, thresh_path in METRICS:
+        mode_rows.extend(audit_mode_pooled_rate(label, score_col, thresh_col, score_path, thresh_path))
+
+    mode_out = pd.DataFrame(mode_rows)
+    mode_out["mode"] = pd.Categorical(mode_out["mode"], categories=MODES, ordered=True)
+    mode_out = mode_out.sort_values(["metric", "mode"])
+
+    mode_out_path = os.path.join(RESULTS_DIR, "pre_onset_mode_rate.csv")
+    mode_out.to_csv(mode_out_path, index=False)
+
+    print(f"\n=== Pre-onset flag rate by mode, pooled across {USABLE_COUNTERS} (paper Table 4) ===")
+    print(mode_out.to_string(index=False))
+    print(f"\nSaved {mode_out_path}")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,10 @@
+metric,mode,n_pre_onset_flagged_windows,n_pre_onset_windows_total,pct_pre_onset_windows_flagged
+D_final (W=10),normal,1,14000,0.0071
+D_final (W=10),jump,22,14000,0.1571
+D_final (W=10),drift,13,14000,0.0929
+G_final (W=5),normal,2,14500,0.0138
+G_final (W=5),jump,37,14500,0.2552
+G_final (W=5),drift,19,14500,0.131
+V_final (W=5),normal,0,14500,0.0
+V_final (W=5),jump,22,14500,0.1517
+V_final (W=5),drift,20,14500,0.1379
