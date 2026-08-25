@@ -17,8 +17,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
 PLOT_DIR = os.path.join(SCRIPT_DIR, "plots")
 
-SEED = 2
-SEED_DIR = os.path.join(PROJECT_ROOT, "adaptive_analysis_board_firmware", "plots", f"seed{SEED}_newMapping")
+SEEDS = [2, 5, 6, 10]
 
 MODE_COLORS = {
     "normal": "#111111",
@@ -27,10 +26,9 @@ MODE_COLORS = {
 }
 
 
-def main():
-    os.makedirs(PLOT_DIR, exist_ok=True)
-
-    dfs = {mode: pd.read_csv(os.path.join(SEED_DIR, f"ekf_diag_{mode}.csv")) for mode in MODE_COLORS}
+def make_figure(seed):
+    seed_dir = os.path.join(PROJECT_ROOT, "adaptive_analysis_board_firmware", "plots", f"seed{seed}_newMapping")
+    dfs = {mode: pd.read_csv(os.path.join(seed_dir, f"ekf_diag_{mode}.csv")) for mode in MODE_COLORS}
 
     plt.rcParams.update({"font.size": 12, "font.family": "serif"})
     fig, ax = plt.subplots(figsize=(7, 4.6))
@@ -47,12 +45,19 @@ def main():
     ax.spines["right"].set_visible(False)
     ax.legend(loc="upper left", fontsize=10, frameon=False)
 
-    fig.suptitle(f"Seed {SEED} — Strong Tracking Filter fading factor", y=1.0)
+    fig.suptitle(f"Seed {seed} — Strong Tracking Filter fading factor", y=1.0)
     fig.tight_layout()
 
-    out_path = os.path.join(PLOT_DIR, f"seed{SEED}_lambda_k.png")
+    out_path = os.path.join(PLOT_DIR, f"seed{seed}_lambda_k.png")
     fig.savefig(out_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
     print(f"Saved {out_path}")
+
+
+def main():
+    os.makedirs(PLOT_DIR, exist_ok=True)
+    for seed in SEEDS:
+        make_figure(seed)
 
 
 if __name__ == "__main__":
