@@ -33,6 +33,12 @@ RESULTS_DIR = os.path.join(LINE_FITTING_DIR, "results")
 
 ONSET_ITER = 150
 
+# hpmcounter9 excluded (established near-negative-control, noise-
+# contaminated -- see pre_onset_audit.py / Sec. 8.4), matching the
+# convention already used in ml_fusion_classifier.py, pre_onset_audit.py,
+# ensemble_detection.py, and ensemble_firing_timeline.py.
+USABLE_COUNTERS = ["hpmcounter3", "hpmcounter4", "hpmcounter5", "hpmcounter8", "hpmcounter10"]
+
 # (label, score_col, thresh_col, score_path, thresh_path)
 METRICS = [
     ("D_final (W=10)", "d", "H_d", "d_final_dscore.csv", "d_final_thresholds.csv"),
@@ -45,7 +51,7 @@ def confusion_for_metric(label, score_col, thresh_col, score_path, thresh_path):
     scored = pd.read_csv(os.path.join(RESULTS_DIR, score_path))
     thresholds = pd.read_csv(os.path.join(RESULTS_DIR, thresh_path))
 
-    df = scored[~scored["sigma_fragile"]].merge(thresholds, on="counter")
+    df = scored[~scored["sigma_fragile"] & scored["counter"].isin(USABLE_COUNTERS)].merge(thresholds, on="counter")
     df["flagged"] = df[score_col].abs() > df[thresh_col]
     df["post_onset_flag"] = df["flagged"] & (df["window_end_iter"] >= ONSET_ITER)
 

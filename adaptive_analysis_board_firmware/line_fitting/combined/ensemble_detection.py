@@ -6,12 +6,29 @@ under three voting rules:
     II)  at least 2 fire    (majority vote)
     III) A and B and C      (all three must fire)
 
-Each metric's own per-run "detected" flag is exactly the post-onset-flag
-rule already used throughout this project (run_detected in
-detection_confusion_matrix.py); this script reuses that, then combines
-the three boolean columns with OR / majority / AND before recomputing
-the same confusion matrix (TP/FP/FN/TN) and derived Precision/Recall/F1/
-False-Alarm per counter per scenario.
+Voting is done at the WINDOW level, not the run level: for every window
+position (window_end_iter) where all three metrics have a defined value,
+n_agree = how many of D/G/V are flagged AT THAT SAME WINDOW. Scenario I/
+II/III are then "does ANY window in the run reach n_agree >= 1/2/3" --
+i.e. OR and majority still just need agreement to happen somewhere, but
+III genuinely requires D, G, and V to ALL fire simultaneously at the same
+window at least once, matching the plain-English meaning of "A and B and
+C" (and the per-window n_agree/flag_and convention already used earlier
+in this project, e.g. combined_detection.py). An earlier version of this
+script collapsed each metric to a run-level "fired somewhere, ever"
+boolean BEFORE combining, which silently redefined III to mean "each
+metric independently fired at some point" rather than "all three fired
+together" -- that was wrong and has been fixed.
+
+Since D is W=10 and G/V are W=5, D's window_end_iter values start later;
+only positions where all three metrics have a value are considered (an
+inner join on window_end_iter), same alignment convention already used
+in ensemble_firing_timeline.py.
+
+Ground truth is by run mode: normal = 0, jump/drift = 1. Flagged windows
+are considered across the FULL run (pre- and post-onset), not restricted
+to window_end_iter >= 150 the way detection_confusion_matrix.py's
+post-onset-only convention is.
 
 Jump and drift are scored as SEPARATE binary classification problems
 (jump vs. normal, and drift vs. normal), not pooled into one "attack"
@@ -24,6 +41,11 @@ type they're being scored against.
 Same three metric configurations as heatmap_4counters_midthreshold.py /
 detection_confusion_matrix.py: D_final at W=10, G_final and V_final at
 W=5.
+
+hpmcounter9 excluded (established near-negative-control, noise-
+contaminated -- see pre_onset_audit.py / Sec. 8.4), matching the
+convention already used in ml_fusion_classifier.py, pre_onset_audit.py,
+and ensemble_firing_timeline.py.
 """
 
 import os
@@ -36,7 +58,7 @@ LINE_FITTING_DIR = os.path.dirname(SCRIPT_DIR)
 RESULTS_DIR = os.path.join(LINE_FITTING_DIR, "results")
 PLOT_DIR = os.path.join(LINE_FITTING_DIR, "plots_heatmap")
 
-ONSET_ITER = 150
+USABLE_COUNTERS = ["hpmcounter3", "hpmcounter4", "hpmcounter5", "hpmcounter8", "hpmcounter10"]
 
 # (short_name, score_col, thresh_col, score_path, thresh_path)
 METRICS = [
@@ -56,19 +78,13 @@ ATTACK_TYPES = ["jump", "drift"]
 ATTACK_COLORS = {"jump": "#E07B1A", "drift": "#2E8B3D"}
 
 
-def run_detected_for_metric(score_col, thresh_col, score_path, thresh_path):
+def flagged_frame(short_name, score_col, thresh_col, score_path, thresh_path):
     scored = pd.read_csv(os.path.join(RESULTS_DIR, score_path))
     thresholds = pd.read_csv(os.path.join(RESULTS_DIR, thresh_path))
 
-    df = scored[~scored["sigma_fragile"]].merge(thresholds, on="counter")
-    df["flagged"] = df[score_col].abs() > df[thresh_col]
-    df["post_onset_flag"] = df["flagged"] & (df["window_end_iter"] >= ONSET_ITER)
-
-    return (
-        df.groupby(["counter", "mode", "seed"])["post_onset_flag"]
-        .any()
-        .reset_index(name="detected")
-    )
+    df = scored[~scored["sigma_fragile"] & scored["counter"].isin(USABLE_COUNTERS)].merge(thresholds, on="counter")
+    df[f"flagged_{short_name}"] = df[score_col].abs() > df[thresh_col]
+    return df[["counter", "mode", "seed", "window_end_iter", f"flagged_{short_name}"]]
 
 
 def confusion_stats(grp):
@@ -87,16 +103,24 @@ def confusion_stats(grp):
 def main():
     os.makedirs(PLOT_DIR, exist_ok=True)
 
-    merged = None
+    windowed = None
     for short_name, score_col, thresh_col, score_path, thresh_path in METRICS:
-        rd = run_detected_for_metric(score_col, thresh_col, score_path, thresh_path)
-        rd = rd.rename(columns={"detected": f"detected_{short_name}"})
-        merged = rd if merged is None else merged.merge(rd, on=["counter", "mode", "seed"])
+        fdf = flagged_frame(short_name, score_col, thresh_col, score_path, thresh_path)
+        windowed = fdf if windowed is None else windowed.merge(
+            fdf, on=["counter", "mode", "seed", "window_end_iter"], how="inner"
+        )
 
-    n_fire = merged[["detected_G", "detected_D", "detected_V"]].sum(axis=1)
-    merged["I"] = n_fire >= 1
-    merged["II"] = n_fire >= 2
-    merged["III"] = n_fire >= 3
+    n_agree = windowed[["flagged_G", "flagged_D", "flagged_V"]].sum(axis=1)
+    windowed["window_I"] = n_agree >= 1
+    windowed["window_II"] = n_agree >= 2
+    windowed["window_III"] = n_agree >= 3
+
+    merged = (
+        windowed.groupby(["counter", "mode", "seed"])[["window_I", "window_II", "window_III"]]
+        .any()
+        .rename(columns={"window_I": "I", "window_II": "II", "window_III": "III"})
+        .reset_index()
+    )
 
     rows = []
     for counter, cgrp in merged.groupby("counter"):

@@ -6,12 +6,21 @@ rather than the run-level "detected" flag ensemble_detection.py reports.
 This is the un-collapsed view: at every window position t, does scenario
 I (any of D/G/V_final fires), II (>=2 fire), or III (all 3 fire) fire at
 THAT window -- shown as a green/red strip per scenario. One figure per
-attack type (jump, drift), stacking all 5 usable counters (hpmcounter9
+(attack type, seed), stacking all 5 usable counters (hpmcounter9
 excluded -- see pre_onset_audit.py / Section 8.4) as row-blocks so both
 pre- and post-onset firing behavior is visible across the whole set at
-once. Uses the same seed1 representative-run convention as the other
-single-seed paper figures (plot_hpm_rate.py, plot_trajectory_3d.py,
-plot_gps_ekf_error.py).
+once.
+
+Generated for two representative seeds: seed1 (the convention used by
+the other single-seed paper figures -- plot_hpm_rate.py,
+plot_trajectory_3d.py, plot_gps_ekf_error.py) and seed2. These are
+genuinely different outcomes, not two random picks: checked directly
+against ensemble_detection_confusion_matrix.csv, for jump seed1 has
+ZERO windows with all three metrics firing simultaneously on ANY of the
+5 counters (one of hpmcounter3/jump/III's 6 false negatives), while
+seed2 has >=1 simultaneous window on every one of the 5 counters (one
+of its 14 true positives) -- so seed1 shows what "III never fires" looks
+like and seed2 shows what "III does fire" looks like, both real.
 
 Same three metric configurations as heatmap_4counters_midthreshold.py /
 detection_confusion_matrix.py / ensemble_detection.py: D_final at W=10,
@@ -32,7 +41,7 @@ LINE_FITTING_DIR = os.path.dirname(SCRIPT_DIR)
 RESULTS_DIR = os.path.join(LINE_FITTING_DIR, "results")
 PLOT_DIR = os.path.join(LINE_FITTING_DIR, "plots_heatmap")
 
-REPRESENTATIVE_SEED = "seed1"
+REPRESENTATIVE_SEEDS = ["seed1", "seed2"]
 ONSET_ITER = 150
 TARGET_COUNTERS = ["hpmcounter3", "hpmcounter4", "hpmcounter5", "hpmcounter8", "hpmcounter10"]
 ATTACK_TYPES = ["jump", "drift"]
@@ -67,10 +76,10 @@ def flagged_series(score_path, thresh_path, score_col, thresh_col, counter, mode
     return sub.set_index("window_end_iter")["flagged"].sort_index()
 
 
-def scenario_fire_for_counter(counter, attack_type):
+def scenario_fire_for_counter(counter, attack_type, seed):
     per_metric = {
         short: flagged_series(score_path, thresh_path, score_col, thresh_col,
-                               counter, attack_type, REPRESENTATIVE_SEED)
+                               counter, attack_type, seed)
         for short, score_col, thresh_col, score_path, thresh_path in METRICS
     }
 
@@ -89,7 +98,7 @@ def scenario_fire_for_counter(counter, attack_type):
     }
 
 
-def make_figure(attack_type):
+def make_figure(attack_type, seed):
     n_counters = len(TARGET_COUNTERS)
     n_rows = n_counters * len(SCENARIOS)
     fig, axes = plt.subplots(
@@ -98,13 +107,20 @@ def make_figure(attack_type):
     )
 
     for ax, counter in zip(axes, TARGET_COUNTERS):
-        common_iters, scenario_fire = scenario_fire_for_counter(counter, attack_type)
+        common_iters, scenario_fire = scenario_fire_for_counter(counter, attack_type, seed)
         x0, x1 = common_iters.min(), common_iters.max()
 
         for row, scenario in enumerate(SCENARIOS):
             data = scenario_fire[scenario].astype(int).reshape(1, -1)
             extent = [x0, x1, len(SCENARIOS) - row - 1, len(SCENARIOS) - row]
             ax.imshow(data, aspect="auto", cmap=FIRE_CMAP, vmin=0, vmax=1, extent=extent, interpolation="nearest")
+
+        # separator lines between the 3 stacked scenario strips, so two
+        # adjacent same-color (e.g. both green) strips don't blur together
+        for boundary in range(1, len(SCENARIOS)):
+            ax.axhline(boundary, color="black", linewidth=1.0, alpha=0.9, zorder=3)
+        ax.axhline(0, color="black", linewidth=1.0, alpha=0.9, zorder=3)
+        ax.axhline(len(SCENARIOS), color="black", linewidth=1.0, alpha=0.9, zorder=3)
 
         ax.axvline(ONSET_ITER, color="black", linewidth=1.1, linestyle="--", alpha=0.8)
         ax.set_yticks(np.arange(len(SCENARIOS)) + 0.5)
@@ -127,14 +143,14 @@ def make_figure(attack_type):
     fig.legend(handles=handles, loc="upper right", bbox_to_anchor=(0.995, 0.995), frameon=False, fontsize=9)
 
     fig.suptitle(
-        f"Ensemble firing timeline -- {attack_type} ({REPRESENTATIVE_SEED})\n"
+        f"Ensemble firing timeline -- {attack_type} ({seed})\n"
         "(A=G_final W=5, B=D_final W=10, C=V_final W=5; dashed line = attack onset; "
         "hpmcounter9 excluded, see Sec. 8.4)",
         fontsize=12,
     )
     fig.tight_layout(rect=[0, 0, 1, 0.94])
 
-    out_path = os.path.join(PLOT_DIR, f"ensemble_firing_timeline_{attack_type}.png")
+    out_path = os.path.join(PLOT_DIR, f"ensemble_firing_timeline_{attack_type}_{seed}.png")
     fig.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
     print(f"Saved {out_path}")
@@ -142,8 +158,9 @@ def make_figure(attack_type):
 
 def main():
     os.makedirs(PLOT_DIR, exist_ok=True)
-    for attack_type in ATTACK_TYPES:
-        make_figure(attack_type)
+    for seed in REPRESENTATIVE_SEEDS:
+        for attack_type in ATTACK_TYPES:
+            make_figure(attack_type, seed)
 
 
 if __name__ == "__main__":

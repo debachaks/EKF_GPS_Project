@@ -1,4 +1,4 @@
-"""hpmcounter3/4/8/10 heatmap, D_final/G_final/V_final rows, normal/jump/
+"""hpmcounter3/4/5/8/10 heatmap, D_final/G_final/V_final rows, normal/jump/
 drift columns, one PNG per seed (plus the normal column averaged across
 all 20 seeds) -- same visual format as the original z_stat/D/V(z-scored)
 version this replaces, but sourced from the window-diff-then-z-score
@@ -53,7 +53,7 @@ LINE_FITTING_DIR = os.path.dirname(SCRIPT_DIR)
 RESULTS_DIR = os.path.join(LINE_FITTING_DIR, "results")
 PLOT_DIR = os.path.join(LINE_FITTING_DIR, "plots_heatmap")
 
-TARGET_COUNTERS = ["hpmcounter3", "hpmcounter4", "hpmcounter8", "hpmcounter10"]
+TARGET_COUNTERS = ["hpmcounter3", "hpmcounter4", "hpmcounter5", "hpmcounter8", "hpmcounter10"]
 MODES = ["normal", "jump", "drift"]
 # (score_col, thresh_col, label, k, score_path, thresh_path)
 METRICS = [
@@ -85,11 +85,11 @@ def seed_sort_key(s):
 
 def make_figure(data_sources, threshold_sources, test_seed):
     n = len(TARGET_COUNTERS)
-    fig = plt.figure(figsize=(18, 12))
+    fig = plt.figure(figsize=(18 + 0.9 * n, 12))
     gs = fig.add_gridspec(
         3, 3 + n,
-        width_ratios=[10, 10, 10] + [0.35] * n,
-        wspace=0.15,
+        width_ratios=[10, 10, 10] + [0.6] * n,
+        wspace=0.35,
     )
 
     for row, (value_col, thresh_col, label, k, _, _) in enumerate(METRICS):
@@ -154,7 +154,7 @@ def make_figure(data_sources, threshold_sources, test_seed):
             cbar.ax.tick_params(labelsize=6)
 
     fig.suptitle(
-        f"hpmcounter3/4/8/10: D_final (W=10) / G_final (W=5) / V_final (W=5), |score| ({test_seed})\n"
+        f"hpmcounter3/4/5/8/10: D_final (W=10) / G_final (W=5) / V_final (W=5), |score| ({test_seed})\n"
         "(color scale per counter: threshold sits at the MIDDLE (yellow); "
         "vmax = 3x/2.5x/2x threshold per metric, from observed 99th-percentile ratio; "
         "sigma-fragile positions interpolated, not real values)",
