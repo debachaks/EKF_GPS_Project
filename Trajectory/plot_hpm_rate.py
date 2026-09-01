@@ -23,7 +23,7 @@ PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
 PLOTS_ROOT = os.path.join(PROJECT_ROOT, "adaptive_analysis_board_firmware", "plots")
 OUT_DIR = os.path.join(SCRIPT_DIR, "plots")
 
-SEED = 1
+SEEDS = [1, 2, 5, 6, 10]
 REFERENCE_SEEDS = list(range(1, 21))  # seed1-20_newMapping -- full set, hpc data confirmed present for all 20
 COUNTERS = [3, 4, 5, 8, 10]
 
@@ -60,14 +60,9 @@ def rate_curve(df, counter_col):
     return df["iter"].to_numpy()[1:], d_hpm / d_mcycle
 
 
-def main():
-    os.makedirs(OUT_DIR, exist_ok=True)
-
-    normal_dfs = {s: load_hpc(s, "normal") for s in REFERENCE_SEEDS}
-    attack_dfs = {mode: load_hpc(SEED, mode) for mode in ("jump", "drift")}
-    seed1_normal = normal_dfs[SEED]
-
-    plt.rcParams.update({"font.size": 12, "font.family": "serif"})
+def make_plots(seed, normal_dfs):
+    attack_dfs = {mode: load_hpc(seed, mode) for mode in ("jump", "drift")}
+    seed_normal = normal_dfs[seed]
 
     for c in COUNTERS:
         col = f"hpmcounter{c}"
@@ -75,7 +70,7 @@ def main():
         # panel a: raw value
         normal_stack = np.stack([normal_dfs[s][col].to_numpy() for s in REFERENCE_SEEDS])
         mean_raw = normal_stack.mean(axis=0)
-        iters = seed1_normal["iter"].to_numpy()
+        iters = seed_normal["iter"].to_numpy()
 
         raw_curves = {"normal": mean_raw}
         for mode in ("jump", "drift"):
@@ -84,7 +79,7 @@ def main():
         # panel b: rate
         normal_rates = np.stack([rate_curve(normal_dfs[s], col)[1] for s in REFERENCE_SEEDS])
         mean_rate = normal_rates.mean(axis=0)
-        rate_iters = rate_curve(seed1_normal, col)[0]
+        rate_iters = rate_curve(seed_normal, col)[0]
 
         rate_curves = {"normal": mean_rate}
         for mode in ("jump", "drift"):
@@ -110,13 +105,22 @@ def main():
         ax.spines["right"].set_visible(False)
         ax.legend(loc="upper left", fontsize=10, frameon=False)
 
-        fig.suptitle(f"hpmcounter{c} — seed {SEED} vs. {len(REFERENCE_SEEDS)}-seed normal mean", y=1.02)
+        fig.suptitle(f"hpmcounter{c} — seed {seed} vs. {len(REFERENCE_SEEDS)}-seed normal mean", y=1.02)
         fig.tight_layout()
 
-        out_path = os.path.join(OUT_DIR, f"hpmcounter{c}_raw_rate.png")
+        out_path = os.path.join(OUT_DIR, f"hpmcounter{c}_raw_rate_seed{seed}.png")
         fig.savefig(out_path, dpi=300, bbox_inches="tight")
         plt.close(fig)
         print(f"Saved {out_path}")
+
+
+def main():
+    os.makedirs(OUT_DIR, exist_ok=True)
+    plt.rcParams.update({"font.size": 12, "font.family": "serif"})
+
+    normal_dfs = {s: load_hpc(s, "normal") for s in REFERENCE_SEEDS}
+    for seed in SEEDS:
+        make_plots(seed, normal_dfs)
 
 
 if __name__ == "__main__":
