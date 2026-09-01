@@ -1,0 +1,325 @@
+CONVERSATION LOG — 2026-08-27
+EKF_GPS_Project — GPS spoofing detection via HPC side-channels, HaSS paper + ICC ML spinoff
+================================================================================
+
+SECTION 1: PROJECT REORGANIZATION (carried over from prior session, wrapped up here)
+--------------------------------------------------------------------------------
+- Committed pending deletions of hpmcounter_analysis/, point_to_point/, new_hpm_analysis/
+  (superseded pipelines) as intentional cleanup.
+- Archived the superseded top-level line_fitting/ (856 files) to archive/line_fitting_v1/.
+- Reorganized adaptive_analysis_board_firmware/line_fitting/'s 47 flat scripts into family
+  subfolders: baseline/, z_family/, d_family/, v_family/, g_family/, alt_detectors/,
+  combined/, diagnostics/, heatmaps/ — with path anchors and cross-imports fixed for the
+  4 scripts that import sibling modules (combined_detection*.py, d_zmean_w35.py).
+  Verified representative scripts run correctly from new locations.
+- Pushed all reorg commits to origin/main.
+
+SECTION 2: NEW ANALYSIS SCRIPTS — TRAJECTORY & DETECTION DIAGNOSTICS
+--------------------------------------------------------------------------------
+- Built combined/ensemble_firing_timeline.py: per-window fire/not-fire timeline for
+  ensemble voting scenarios I/II/III (OR/majority/AND across D_final, G_final, V_final),
+  across the FULL run (pre- and post-onset), for representative seeds. Stacks all 5 usable
+  counters (hpmcounter9 excluded). Fixed a y-tick label ordering bug (scenarios were drawn
+  top-to-bottom but labeled bottom-to-top).
+- User asked why lambda_k (STF fading factor) fires before attack onset (t=150). Traced to
+  the ANIS gate being a 95%-confidence statistical test — it's expected to cross threshold
+  ~5% of the time by chance from ordinary sensor noise alone, even with no attack. Checked
+  across all 20 seeds: only seed10 has ZERO pre-onset lambda_k firing across all 3 modes;
+  seed5/6 looked clean checking normal-mode only, but jump/drift fire pre-onset too because
+  per-mode noise streams aren't identical (see below).
+- Plotted lambda_k for seeds 2, 5, 6, 10 (Trajectory/plot_lambda_k.py, refactored to loop
+  over a SEEDS list).
+- Generated hpmcounter{3,4,5,8,10}_raw_rate_seed{N}.png for seeds 1, 2, 5, 6, 10
+  (Trajectory/plot_hpm_rate.py, refactored similarly). Removed old seed1-only unsuffixed
+  files.
+- Modified Trajectory/plot_trajectory_3d.py:
+  * Tightened the 3D plot box to actual data extent (4% padding, matched box aspect to
+    data's real proportions) instead of matplotlib's default ~10-15% padding + forced cube
+    — fixes "trajectory looks tiny in an oversized box."
+  * Added frame="ecef" option (raw ECEF coordinates, with a clean subtracted reference
+    offset stated in the axis label, e.g. "ECEF X - 4,180,000 [m]" — avoids matplotlib's
+    buggy 3D offset-text placement that garbled the z-axis label).
+  * Added source="measured" option — plots traj_measured (raw GPS measurement fed INTO the
+    EKF, includes ordinary sensor noise + injected attack) instead of filt_x/y/z (the EKF's
+    smoothed OUTPUT after Kalman fusion). Clarified for user that "EKF estimate" in the
+    original plot was NOT noise-free raw data — it's the filter's fused output.
+  * Added source="true" option — plots traj_true (ground truth) per mode, confirming the
+    .h file header's claim that true trajectory is identical across all modes (all 3 lines
+    overlap exactly; box degenerates to a near-flat line since real trajectory motion is
+    almost entirely North+Up with minimal East variation — flagged as a known rendering
+    edge case, not fixed).
+  * Generated seed1_normal_jump_drift_3d_ecef_measured.png and
+    seed1_normal_jump_drift_3d_true.png.
+
+SECTION 3: HaSS JOURNAL PAPER — REFERENCES AND MANUSCRIPT EDITS
+--------------------------------------------------------------------------------
+- User requested ~30 recent (2023+) references for interdisciplinary related work. Ran a
+  verified literature search (Crossref-checked, no fabrication) across 4 categories:
+  GPS/GNSS spoofing detection, adaptive Kalman filtering, HPC for security, RISC-V/embedded
+  security. Found 31 verified papers. Confirmed: NO prior work combines HPC-based detection
+  with GNSS spoofing detection against a Kalman-filtered estimator — novelty claim holds.
+  User later said pre-2023 foundational papers (Zhou & Frank STF, Sage-Husa) are also fine.
+- Explained rationale for each category's picks in detail (HPC-for-security papers chosen
+  for RISC-V-platform match + malware-detection-under-noise thematic relevance to sigma-
+  fragility; RISC-V papers chosen for threat-landscape/TEE/hardware-substrate grounding;
+  adaptive-KF papers chosen for STF lineage + the "gated fault-tolerant KF" structural
+  parallel — flagged Xin et al.'s dual-threshold paper as the closest prior art to the
+  ANIS-gating idea; GNSS papers chosen for Kalman-filter-detection lineage + the verified
+  adversarial-evasion citation for Section 1.1).
+- MAJOR CORRECTION to Section 1.1's independence argument: user asked "if someone can
+  falsify ANIS values, won't that affect HPC detection?" — walked through the mechanism:
+  since HPC signal is entirely downstream of the ANIS-gated branch, an attacker who can
+  directly write anis_prev controls both channels via the same lever. Rewrote Section 1.1
+  to scope the independence claim precisely: holds against a measurement-only attacker (no
+  write access to filter internal state); does NOT hold against an attacker with internal-
+  state write access, or against a measurement-only attacker who knows the exact
+  ANIS_THRESHOLD and shapes measurements to stay under it. Also updated the abstract and
+  Section 9 limitation 5 to match. Also added Section 9 limitation 6 (mode-dependent
+  pre-onset ANIS/STF activation rate) and Table 4 (pre-onset flag rate by mode) to Section
+  8.4, backed by a new pre_onset_mode_rate.csv computation added to pre_onset_audit.py.
+- Committed and pushed: lambda_k seed plots, pre-onset mode-rate audit, ML fusion
+  classifier work, and the manuscript draft itself (first time paper/ was tracked in git,
+  per explicit request this session — previously left untracked intentionally).
+
+SECTION 4: BINOMIAL CONFIDENCE INTERVALS
+--------------------------------------------------------------------------------
+- Explained why small-n (n=20) proportions like False-Alarm rate need Wilson score CIs
+  instead of Wald/normal-approximation intervals (which break down at p near 0/1).
+  Computed real Wilson CIs from detection_confusion_matrix.csv: e.g. FA=0/20 has 95% CI
+  up to 0.161 — "0% observed" doesn't mean the true rate is provably near zero.
+  Clarified: a wide CI doesn't mean the detector is bad, it means the measurement is
+  imprecise at this sample size — the interval still excludes implausibly-bad values
+  (e.g. 50%+ FA), and Recall (n=40, pooled jump+drift) has much tighter CIs than FA (n=20).
+
+SECTION 5: ICC PAPER — ML SPINOFF BRAINSTORM AND BUILD
+--------------------------------------------------------------------------------
+- Brainstormed ICC 2027 submission (Communication and Information System Security
+  Symposium; deadline confirmed Oct 2, 2026; 6-page limit + 2 overlength pages allowed).
+  Checked real ICC precedent: a 2014 ICC paper used particle-filter-based GNSS
+  anti-spoofing, confirming the general topic fits, but no ICC precedent found for
+  HPC-based detection specifically — flagged as a real, if manageable, framing risk.
+- Brainstormed several ML addition ideas (classifier vs rule-based ensemble comparison,
+  LOSO-CV, feature importance, sample-efficiency curves, detection latency, software-NIS
+  baseline, adversarial evasion experiment). Recommended classifier + LOSO-CV as the
+  highest-value/lowest-effort addition given the ~5.5 week runway.
+- IMPORTANT CORRECTION: user pointed out the proposed adversarial-evasion experiment
+  (craft a drift attack that stays under ANIS_THRESHOLD) would fail to demonstrate
+  HPC-channel superiority, since HPC signal is entirely gated by the same ANIS threshold —
+  an attacker evading ANIS also evades HPC detection, because compute_lambda_k() never
+  executes if ANIS never crosses threshold. This directly fed into the Section 1.1
+  rewrite in Section 3 above.
+- Discussed supervised vs. unsupervised ML framing at length: supervised risks "only
+  tested on 2 known attack shapes" critique; unsupervised (one-class) is more realistic
+  since it doesn't require labeled attacks, matching how the existing rule-based Q95
+  threshold is ALSO already unsupervised (flagged this so the "no labels needed" framing
+  wasn't oversold as an ML-specific advantage).
+
+Built two feature-engineering variants (in adaptive_analysis_board_firmware/line_fitting/ml/):
+  1. ml_fusion_classifier.py — 15 features/run (5 usable counters x 3 metrics D/G/V,
+     max(|score|) over post-onset windows). Models: Logistic Regression, Random Forest
+     (supervised), Mahalanobis distance with Ledoit-Wolf shrinkage, and Local Outlier
+     Factor (one-class/unsupervised). Evaluated via Leave-One-Seed-Out (LOSO) CV.
+  2. ml_raw_counter_classifier.py — same 15-feature shape but built from raw z-scored
+     counter values (mean/max/std) instead of the D/G/V windowed statistics — an ablation
+     testing whether the feature engineering matters.
+
+RESULTS (D/G/V engineered features, LOSO-CV, n=60: 20 normal + 20 jump + 20 drift):
+  Random Forest (supervised):     Recall=0.975  FA=0.00  F1=0.987
+  Logistic Regression (supervised): Recall=0.875  FA=0.00  F1=0.933
+  LOF (one-class, no labels):     Recall=1.000  FA=0.10  F1=0.976
+  Mahalanobis (one-class, no labels): Recall=1.000  FA=0.30  F1=0.930
+
+RESULTS (raw counter features, same protocol — ablation):
+  Random Forest: Recall=0.850  FA=0.25  F1=0.861
+  LOF:           Recall=0.475  FA=0.10  F1=0.623
+  Mahalanobis:   Recall=0.500  FA=0.15  F1=0.635
+  => Engineered features clearly outperform raw features across every model — validates
+     the D/G/V feature engineering rather than undermining it.
+
+- Explained feature engineering mechanics in detail on request: traced the full pipeline
+  from raw HPM counter -> per-iteration z-score -> Stage-1 windowed statistic (slope for D,
+  level for G, variance for V) -> Stage-2 window-diff -> Stage-3 re-baseline against 20
+  normal trials -> max(|score|) over post-onset windows = the final ML feature. Walked
+  through a concrete example (hpmcounter3/D/jump/seed1: score climbs to 216.9 at iter 162).
+- Explained exactly how TP/FP/FN/TN, Recall, and False-Alarm are computed for the ML
+  models: RUN-level (one label, one prediction per whole trial), not window-level like the
+  ensemble per-trial analysis (Section 6). Clarified precisely which data is used for
+  training vs testing in the one-class LOSO loop (train_idx vs train_normal_idx filtering),
+  and confirmed via code walkthrough that attack runs are NEVER used to fit the one-class
+  models — only ever appear in test_idx.
+- Confirmed precisely that ALL features (train and test, every mode) are built exclusively
+  from t>=150 (post-onset) data, since build_feature_table() applies this filter before
+  any LOSO split occurs — so pre-onset behavior cannot influence any ML decision, for any
+  run, under the current design.
+- Discussed real-world deployment gap: the current post-onset-only feature construction
+  relies on ORACLE knowledge of attack onset timing, which a real streaming/online system
+  wouldn't have. Concluded the honest fix is a rolling-window redesign (score the last N
+  windows continuously, reusing the already-causal per-window D/G/V scores) rather than a
+  new detection mechanism — flagged as a stated scope limitation with a credible path
+  forward, not a currently-solved problem.
+- Explained why one-class detection is genuinely different from the rule-based Q95
+  threshold despite both being "unsupervised": rule-based detectors look at ONE counter at
+  a time and combine via a hand-picked vote; Mahalanobis/LOF learn the JOINT shape of all
+  5 counters' normal behavior together, capturing cross-counter correlations a per-counter
+  threshold can't see. (User caught and corrected an earlier framing that used "doesn't
+  need labels" as the differentiator — invalid since the rule-based threshold is also
+  label-free.)
+
+Added Local Outlier Factor (LOF) alongside Mahalanobis as a second one-class method
+(run_lof_loso() in ml_fusion_classifier.py, reused by the raw-counter script) — LOF beat
+Mahalanobis clearly on D/G/V features (FA 0.10 vs 0.30, same perfect recall) but performed
+similarly poorly to Mahalanobis on raw features, reinforcing that feature engineering (not
+algorithm choice) drives the one-class results.
+
+SECTION 6: PRESENTATION PREP — "WHY ML GIVEN STATISTICAL DETECTORS ALREADY WORK"
+--------------------------------------------------------------------------------
+- User needed to present this ML work the next day and explicitly did not want the
+  statistical/rule-based detection framed as weak, since it's the journal paper's central
+  contribution. Iteratively refined the narrative:
+  * Do NOT frame rule-based F1=1.000 as "circular/less trustworthy" vs ML's LOSO-CV — even
+    though technically true (Q95 threshold calibrated AND evaluated on the same 20 normal
+    trials), user wanted this reframed as complementary reinforcement, not critique.
+  * Do NOT cite specific F1 numbers for the statistical detectors yet (TP/FP/FN/TN
+    methodology for the statistical method still to be finalized/discussed later).
+  * Real differentiator settled on: univariate-per-counter-then-vote (statistical) vs.
+    joint-multivariate-fusion (ML one-class) — not "labels vs no labels."
+  Produced a final 6-slide deck (unsupervised-only, per user's later request), covering:
+  motivation, feature engineering mechanics, model mechanics (Mahalanobis/LOF + LOSO-CV),
+  precise Recall/False-Alarm definitions, results table, and takeaway.
+
+SECTION 7: NEW EVALUATION DESIGN — WINDOW-LEVEL FALSE ALARM FOR ENSEMBLE SCENARIOS
+--------------------------------------------------------------------------------
+- User designed a new, mixed-granularity evaluation for the three ensemble scenarios
+  (I=any fires, II=majority, III=all three fire): TP/FN scored per RUN (did it fire at
+  least once post-onset — since only "detected at all" matters operationally, not how many
+  windows fired), but FP/TN scored per WINDOW (every pre-onset window is its own false-
+  alarm opportunity, since false alarms are a recurring cost, not a single event). Ground
+  truth: 0 before t=150, 1 at/after t=150, within each trial.
+- Discussed and validated this design at length: run-level TP avoids penalizing a detector
+  for correctly firing briefly rather than continuously; window-level FP gives far more
+  statistical power (140 windows/trial vs 1 binary outcome) and matches the "point-
+  adjustment" style evaluation used in some time-series anomaly-detection literature —
+  flagged that this MUST be stated explicitly in the paper's methodology section to avoid
+  looking like cherry-picked granularity.
+- Built combined/ensemble_per_trial_confusion.py: computes per-trial (per counter, per
+  attack type, per seed, per scenario) TP/FP/FN/TN/precision/recall/f1/false_alarm using
+  this design, reusing scenario_fire_for_counter() from ensemble_firing_timeline.py for
+  consistency. 600 rows (5 counters x 2 attack types x 20 seeds x 3 scenarios), saved to
+  results/ensemble_per_trial_confusion.csv. Confirmed 289 windows/trial (140 pre-onset +
+  149 post-onset), bounded by D_final's W=10 start offset.
+- Computed average false-alarm ratio per (counter, attack_type, scenario) — averaged the
+  per-trial false_alarm column across the 20 jump and 20 drift trials SEPARATELY (not
+  pooled). Saved to results/ensemble_avg_false_alarm.csv. Pattern: FA drops monotonically
+  from Scenario I to III, reaching ~0 everywhere under Scenario III; hpmcounter3 is the
+  only counter with meaningfully nonzero FA even under Scenario I (jump avg 0.0211, drift
+  0.0161).
+- Built combined/ensemble_avg_false_alarm_plot.py: one plot per counter, x-axis=scenario
+  (I/II/III), y-axis=average false-alarm ratio, two lines (jump orange, drift green).
+  Fixed a y-axis bug (was extending slightly below 0; corrected to start exactly at 0).
+  Generated for all 5 usable counters.
+- Printed full per-trial false-alarm values (all 20 seeds x jump/drift x 5 counters x 3
+  scenarios) on request.
+
+SECTION 8: DECISIVE INVESTIGATION — DOES ML "NOT WORK" BECAUSE IT FLAGS PRE-ONSET DATA?
+--------------------------------------------------------------------------------
+This was the most substantive methodological thread of the session. Sequence of findings:
+
+1. User asked to explore an ML variant: train one-class models on normal-mode data's FULL
+   289-window range (not just post-onset) instead of the standard post-onset-restricted
+   149 windows, since normal-mode data has no attack timing to protect via oracle
+   restriction (unlike attack-mode runs, which DO need the post-onset restriction to avoid
+   scoring on non-attack behavior).
+   RESULT: full-window training genuinely helped Mahalanobis (FA 0.30 -> 0.20, F1 0.930 ->
+   0.952) and left LOF unchanged (FA=0.10, F1=0.976, identical numbers) — a clean win with
+   no confound. Saved to results/ml_fusion_fullwindow_train_loso.csv.
+
+2. User then asked to ALSO test jump/drift's pre-onset segment as an additional
+   "should-be-normal" test case (ground_truth=0), alongside the existing post-onset
+   (ground_truth=1) test case — using each attack trial's pre-onset segment as a second,
+   separate test row. Built ml/ml_fusion_expanded_normal.py: 100 test rows total
+   (20 normal_full + 20 jump_post + 20 jump_pre + 20 drift_post + 20 drift_pre), only
+   normal_full rows ever used for training.
+   RESULT: false-alarm rate spiked badly — Mahalanobis FA=0.583, LOF FA=0.500. Broke down
+   WHERE the false positives came from (Mahalanobis): jump_pre 17/20 (85%), drift_pre
+   14/20 (70%), normal_full only 4/20 (20%). Confirmed this is NOT a flaw in the ML models
+   but a re-surfacing of the ALREADY-DOCUMENTED mode-dependent pre-onset noise-realization
+   issue (Section 3/HaSS paper limitation 6) — jump/drift's pre-onset segment is generated
+   via separate random draws in the test harness and is NOT actually statistically
+   identical to genuine normal-mode data, despite representing the same "no attack yet"
+   physical scenario.
+
+3. Tried switching the feature aggregation from max(|score|) to mean(|score|), hypothesizing
+   this would reduce sensitivity to rare single-window excursions.
+   RESULT: mixed and mostly negative. On the standard (non-expanded) test set, mean() hurt
+   LOF's recall (1.000 -> 0.925, missing 3 real attacks) and didn't improve Mahalanobis's
+   FA. On the expanded test set, mean() made Mahalanobis WORSE (FA 0.583 -> 0.717,
+   jump_pre/drift_pre flagged even more: 90%/95%) but helped LOF meaningfully (FA 0.500 ->
+   0.267, jump_pre/drift_pre flagged less: 30%/40%), at the cost of recall dropping to
+   0.925. Concluded mean() does not cleanly fix the underlying confound for either method.
+
+4. User pushed back hard: "if ML was working it wouldn't flag anything pre-attack as
+   attack" and "in a realistic setting, flagging before the attack has happened isn't good
+   at all." Addressed this directly and honestly:
+   - Distinguished the TEST-HARNESS ARTIFACT (jump/drift's pre-onset segment being
+     statistically different due to separately-generated RNG draws per mode file) from a
+     REAL DEPLOYMENT CONCERN (a real single physical sensor stream has no mechanism to
+     "know" it will be attacked later, so pre-attack and never-attacked data are
+     physically identical in real deployment — this confound has no real-world analog).
+   - Clarified the CORRECT honest false-alarm number is the one measured against GENUINE
+     normal-mode trials only (FA=0.10 for LOF), not the 85%/70% pre-onset-as-normal number.
+   - User then asked "but rule-based never showed 85%/70% false alarms" — a sharp and
+     valid challenge. Resolved DECISIVELY by testing: does the SAME "any window, any
+     counter, any metric fires" aggregation, using ONLY the already-trusted rule-based
+     D/G/V per-window flags (zero ML involved), produce the same pattern?
+     RESULT: YES — normal 2/20 (10%), jump 15/20 (75%), drift 11/20 (55%). This proved the
+     85%/70% ML result is NOT an ML-specific problem: aggregating "did anything fire
+     anywhere across many checks" amplifies the same real, pre-existing data phenomenon
+     regardless of whether the underlying detector is the ML model or the plain rule-based
+     thresholds. The earlier low per-window-averaged FA numbers (Section 7) were low
+     because they AVERAGE across windows (forgiving of rare firings); "did anything fire
+     at all" is a much stricter aggregation that surfaces the same rare events as a much
+     higher percentage.
+
+5. User then asked: doesn't the ensemble voting design (majority/all-three-fire) ALSO bring
+   down false alarms the same way? Tested directly using ensemble_per_trial_confusion.csv:
+   for each trial, does ANY of the 5 counters have a pre-onset false positive, under each
+   scenario?
+   RESULT — decisive and very clean:
+     Scenario I   (any one fires):  jump 15/20 (75%), drift 11/20 (55%)
+     Scenario II  (majority, >=2):  jump  3/20 (15%), drift  2/20 (10%)
+     Scenario III (all three fire): jump  0/20 (0%),  drift  0/20 (0%)
+   Requiring simultaneous multi-metric agreement COMPLETELY ELIMINATES the pre-onset
+   false-alarm problem for both jump and drift under Scenario III — the mode-dependent
+   noise issue turns out to be a single-metric phenomenon; D, G, and V essentially never
+   happen to agree with each other on the same noisy pre-onset moments.
+   IMPLICATION FOR ML (proposed, not yet built at end of session): rebuild the ML features
+   using the ensemble-agreement-filtered signal (e.g. only count a window if >=2 or all 3
+   metrics fire there simultaneously) instead of each metric's max(|score|) independently,
+   since the current ML features are built per-metric independently (closer in spirit to
+   Scenario I) and likely inherited the over-flagging problem for that reason. This was
+   proposed as the next concrete step but not yet implemented at the point this log was
+   saved.
+
+FILES CREATED/MODIFIED THIS SESSION (not exhaustive list of every intermediate script):
+- Trajectory/plot_lambda_k.py, plot_hpm_rate.py, plot_trajectory_3d.py (all modified)
+- adaptive_analysis_board_firmware/line_fitting/combined/ensemble_firing_timeline.py,
+  ensemble_per_trial_confusion.py (new), ensemble_avg_false_alarm_plot.py (new)
+- adaptive_analysis_board_firmware/line_fitting/ml/ml_fusion_classifier.py,
+  ml_raw_counter_classifier.py (new), ml_fusion_expanded_normal.py (new, exploratory)
+- adaptive_analysis_board_firmware/line_fitting/combined/pre_onset_audit.py (modified,
+  added mode-pooled rate audit)
+- paper/draft_manuscript.md (Section 1.1 rewrite, Section 9 limitation 6, Table 4, first
+  time committed to git this session)
+- Various results/*.csv and plots_heatmap/*.png outputs referenced throughout.
+
+OPEN THREADS AT END OF SESSION:
+- Rebuild ML features using ensemble-agreement-filtered signal (Scenario II/III style)
+  instead of independent per-metric max — proposed, not yet implemented.
+- TP/FP/FN/TN calculation methodology for the statistical (rule-based) detectors still to
+  be finalized/discussed, per user's explicit deferral earlier in the session.
+- Rolling-window (streaming/online) redesign of the ML feature construction, to remove the
+  oracle-onset-timing dependency — flagged as future work, not built.
+- Software-only NIS/ANIS baseline for the "why hardware over software" argument — discussed
+  as a good low-effort addition, not yet built.
+================================================================================
+END OF LOG
