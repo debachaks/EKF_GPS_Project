@@ -10,6 +10,7 @@ without needing to explain ECEF.
 """
 
 import os
+import re
 
 import numpy as np
 import pandas as pd
@@ -18,6 +19,23 @@ import matplotlib.pyplot as plt
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
 PLOT_DIR = os.path.join(SCRIPT_DIR, "plots")
+
+ARRAY_RE = re.compile(r"\{\s*([-\d.eE]+)\s*,\s*([-\d.eE]+)\s*,\s*([-\d.eE]+)\s*\}")
+
+
+def load_traj_array(mode, seed, array_name):
+    """Parse traj_true or traj_measured out of trajectory_<mode>_seed<N>_new.h.
+    traj_measured is the RAW GPS measurement fed into the EKF -- ordinary
+    sensor noise pre-onset, plus the injected attack from onset -- with no
+    Kalman filtering/smoothing applied. Not to be confused with filt_x/y/z
+    (the EKF's fused output, what "EKF estimate" plots) or true_x/y/z
+    (physical ground truth, unaffected by the attack)."""
+    path = os.path.join(SCRIPT_DIR, f"trajectory_{mode}_seed{seed}_new.h")
+    with open(path) as f:
+        text = f.read()
+    block = text.split(array_name)[1].split("{", 1)[1].split("};")[0]
+    rows = ARRAY_RE.findall(block)
+    return np.array(rows, dtype=float)
 
 SEED = 1
 SEED_DIR = os.path.join(PROJECT_ROOT, "original_pipeline", f"seed_{SEED}_data")
@@ -59,27 +77,57 @@ def ecef_to_enu(xyz, ref_xyz, ref_lat, ref_lon):
     return d @ R.T
 
 
-def local_xyz(df, cols, ref_xyz, ref_lat, ref_lon):
-    return ecef_to_enu(df[cols].to_numpy(), ref_xyz, ref_lat, ref_lon)
-
-
-def make_plot(modes, out_name, frame="enu"):
+def make_plot(modes, out_name, frame="enu", source="ekf"):
     """frame: "enu" (default, local East-North-Up, readable) or "ecef"
     (raw Earth-Centered Earth-Fixed meters -- axes not aligned with any
     intuitive direction, and all three coordinates sit around 6.378e6 m
     since that's Earth's radius, with only the trajectory's few-hundred-
     meter extent varying within that -- kept for completeness/appendix
-    use, not because it's more readable than ENU)."""
+    use, not because it's more readable than ENU).
+
+    source: "ekf" (default) plots filt_x/y/z -- the EKF's fused state
+    estimate, i.e. what the filter believes AFTER blending the (possibly
+    spoofed) GPS measurement with the IMU prediction through its own
+    Kalman gain / ANIS-gated STF logic. "measured" instead plots
+    traj_measured straight out of trajectory_<mode>_seed<N>_new.h -- the
+    RAW GPS measurement as fed INTO the filter, with ordinary sensor
+    noise pre-onset and the injected attack from onset, but no Kalman
+    filtering/smoothing applied at all. Ground truth (traj_true) is the
+    same in both cases -- it's the physical path, unaffected by either
+    the attack or the filter.
+    """
     os.makedirs(PLOT_DIR, exist_ok=True)
 
     dfs = {mode: pd.read_csv(os.path.join(SEED_DIR, f"ekf_diag_{mode}.csv")) for mode in modes}
 
+    if source == "ekf":
+        def get_points(mode):
+            return dfs[mode][["filt_x", "filt_y", "filt_z"]].to_numpy()
+        traj_label = lambda mode: "EKF estimate (normal)" if mode == "normal" else f"EKF estimate ({mode} attack)"
+    elif source == "measured":
+        def get_points(mode):
+            return load_traj_array(mode, SEED, "traj_measured")
+        traj_label = lambda mode: "Raw GPS measurement (normal)" if mode == "normal" else f"Raw GPS measurement ({mode} attack)"
+    elif source == "true":
+        # traj_true is documented as identical across all modes/seeds (see
+        # the .h file header comment) -- plotting it per-mode here is a
+        # direct visual check of that claim, not because it's expected to
+        # differ. Skips the separate dashed ground-truth reference line
+        # below, since it would exactly duplicate one of these.
+        def get_points(mode):
+            return load_traj_array(mode, SEED, "traj_true")
+        traj_label = lambda mode: f"Ground truth ({mode})"
+    else:
+        raise ValueError(source)
+
+    true_raw = load_traj_array("normal", SEED, "traj_true")
+
     if frame == "enu":
-        ref_xyz = dfs["normal"][["true_x", "true_y", "true_z"]].iloc[0].to_numpy()
+        ref_xyz = true_raw[0]
         ref_lat, ref_lon = ecef_to_geodetic(*ref_xyz)
 
-        def project(df, cols):
-            return local_xyz(df, cols, ref_xyz, ref_lat, ref_lon)
+        def project(xyz):
+            return ecef_to_enu(xyz, ref_xyz, ref_lat, ref_lon)
 
         axis_labels = ("East [m]", "North [m]", "Up [m]")
     elif frame == "ecef":
@@ -87,10 +135,10 @@ def make_plot(modes, out_name, frame="enu"):
         # (raw ECEF sits around 6.378e6 m); state the offset in the axis
         # label text itself rather than relying on matplotlib's automatic
         # offset-text placement, which overlaps custom 3D axis labels.
-        ecef_ref = np.floor(dfs["normal"][["true_x", "true_y", "true_z"]].iloc[0].to_numpy() / 1000) * 1000
+        ecef_ref = np.floor(true_raw[0] / 1000) * 1000
 
-        def project(df, cols):
-            return df[cols].to_numpy() - ecef_ref
+        def project(xyz):
+            return xyz - ecef_ref
 
         axis_labels = (
             f"ECEF X - {ecef_ref[0]:,.0f} [m]",
@@ -100,7 +148,7 @@ def make_plot(modes, out_name, frame="enu"):
     else:
         raise ValueError(frame)
 
-    true_pts = project(dfs["normal"], ["true_x", "true_y", "true_z"])
+    true_pts = project(true_raw)
 
     plt.rcParams.update({"font.size": 12, "font.family": "serif"})
     fig = plt.figure(figsize=(9, 7.2))
@@ -111,28 +159,32 @@ def make_plot(modes, out_name, frame="enu"):
     ax.yaxis.pane.set_alpha(0.04)
     ax.zaxis.pane.set_alpha(0.04)
 
-    ax.plot(true_pts[:, 0], true_pts[:, 1], true_pts[:, 2],
-            color=TRUE_COLOR, linewidth=1.3, linestyle="--", label="Ground truth", alpha=0.7)
+    if source != "true":
+        ax.plot(true_pts[:, 0], true_pts[:, 1], true_pts[:, 2],
+                color=TRUE_COLOR, linewidth=1.3, linestyle="--", label="Ground truth", alpha=0.7)
 
-    normal_pts = project(dfs["normal"], ["filt_x", "filt_y", "filt_z"])
+    normal_pts = project(get_points("normal"))
     ax.scatter(*normal_pts[0], color="black", s=55, zorder=6, marker="*",
                edgecolor="white", linewidth=0.6, label="Trajectory start")
 
     onset_marker_used = False
+    mode_pts = {}
     for mode in modes:
         color = MODE_COLORS[mode]
-        df = dfs[mode]
-        pts = project(df, ["filt_x", "filt_y", "filt_z"])
-        label = "EKF estimate (normal)" if mode == "normal" else f"EKF estimate ({mode} attack)"
-        ax.plot(pts[:, 0], pts[:, 1], pts[:, 2], color=color, linewidth=2.0, label=label)
+        pts = project(get_points(mode))
+        mode_pts[mode] = pts
+        ax.plot(pts[:, 0], pts[:, 1], pts[:, 2], color=color, linewidth=2.0, label=traj_label(mode))
 
         if mode != "normal":
             # last shared pre-attack index -- attack_active is already 1 at
             # its first True row, so that row is post-attack, not the fork
-            # point. jump and drift share the exact same filt_x/y/z up to
-            # and including this index, so this marker lands in the same
-            # place for both.
-            first_active = df.index[df["attack_active"] == 1][0]
+            # point. jump and drift share the exact same pre-onset values
+            # up to and including this index, so this marker lands in the
+            # same place for both. attack_active still comes from the CSV
+            # (traj_measured/traj_true .h arrays don't carry it), but its
+            # row index lines up 1:1 with the .h arrays -- both cover the
+            # same TRAJ_LEN=300 steps in the same order.
+            first_active = dfs[mode].index[dfs[mode]["attack_active"] == 1][0]
             onset_idx = first_active - 1
             marker_label = "Attack onset" if not onset_marker_used else None
             onset_marker_used = True
@@ -151,7 +203,7 @@ def make_plot(modes, out_name, frame="enu"):
     # trajectory otherwise reads as "lost" in an oversized cubic box. This
     # matters even more in ECEF, where the trajectory's few-hundred-meter
     # extent would otherwise be invisible against the ~6.378e6 m baseline.
-    all_pts = np.vstack([true_pts] + [project(dfs[m], ["filt_x", "filt_y", "filt_z"]) for m in modes])
+    all_pts = np.vstack([true_pts] + [mode_pts[m] for m in modes])
     mins, maxs = all_pts.min(axis=0), all_pts.max(axis=0)
     pad = 0.04 * (maxs - mins)
     ax.set_xlim3d(mins[0] - pad[0], maxs[0] + pad[0])
@@ -169,6 +221,8 @@ def main():
     make_plot(["normal", "jump"], f"seed{SEED}_jump_vs_normal_3d.png")
     make_plot(["normal", "jump", "drift"], f"seed{SEED}_normal_jump_drift_3d.png")
     make_plot(["normal", "jump", "drift"], f"seed{SEED}_normal_jump_drift_3d_ecef.png", frame="ecef")
+    make_plot(["normal", "jump", "drift"], f"seed{SEED}_normal_jump_drift_3d_ecef_measured.png",
+              frame="ecef", source="measured")
 
 
 if __name__ == "__main__":
