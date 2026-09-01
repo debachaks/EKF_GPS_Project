@@ -40,6 +40,7 @@ from sklearn.covariance import LedoitWolf
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import LeaveOneGroupOut
+from sklearn.neighbors import LocalOutlierFactor
 from sklearn.preprocessing import StandardScaler
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -178,6 +179,41 @@ def run_one_class_loso(table, feature_cols, percentile=95):
     return confusion_stats(y, y_pred)
 
 
+def run_lof_loso(table, feature_cols, n_neighbors=10, percentile=5):
+    """Local Outlier Factor, same one-class setup as run_one_class_loso
+    (fit on training normal runs only, threshold from a percentile of
+    the training scores) but density-based rather than a single Gaussian
+    fit to the whole normal cluster -- can pick up local structure
+    Mahalanobis distance (a single global covariance) would smooth over.
+    n_neighbors is capped at the training-fold size (19 normal runs per
+    LOSO fold here) since sklearn requires n_neighbors <= n_samples."""
+    X = table[feature_cols].to_numpy()
+    y = (table["mode"] != "normal").astype(int).to_numpy()
+    groups = table["seed"].to_numpy()
+    is_normal = (table["mode"] == "normal").to_numpy()
+
+    logo = LeaveOneGroupOut()
+    y_pred = np.zeros_like(y)
+    for train_idx, test_idx in logo.split(X, y, groups):
+        train_normal_idx = train_idx[is_normal[train_idx]]
+
+        scaler = StandardScaler().fit(X[train_normal_idx])
+        X_train_normal = scaler.transform(X[train_normal_idx])
+        X_test = scaler.transform(X[test_idx])
+
+        k = min(n_neighbors, len(train_normal_idx) - 1)
+        lof = LocalOutlierFactor(n_neighbors=k, novelty=True)
+        lof.fit(X_train_normal)
+
+        train_scores = lof.score_samples(X_train_normal)
+        threshold = np.percentile(train_scores, percentile)
+
+        test_scores = lof.score_samples(X_test)
+        y_pred[test_idx] = (test_scores < threshold).astype(int)
+
+    return confusion_stats(y, y_pred)
+
+
 def main():
     table, feature_cols = build_feature_table()
     print(f"Feature table: {table.shape[0]} runs x {len(feature_cols)} features")
@@ -187,6 +223,7 @@ def main():
         "logreg (supervised)": run_supervised_loso(table, feature_cols, "logreg"),
         "random_forest (supervised)": run_supervised_loso(table, feature_cols, "rf"),
         "mahalanobis (one-class, normal-only)": run_one_class_loso(table, feature_cols),
+        "lof (one-class, normal-only)": run_lof_loso(table, feature_cols),
     }
 
     rows = [{"method": name, **stats_} for name, stats_ in results.items()]
