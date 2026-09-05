@@ -1,0 +1,5 @@
+method,TP,FP,FN,TN,precision,recall,recall_ci_lo,recall_ci_hi,f1,false_alarm,fa_ci_lo,fa_ci_hi
+logreg (supervised),38,0,2,20,1.0,0.95,0.835,0.986,0.974,0.0,0.0,0.161
+random_forest (supervised),38,2,2,18,0.95,0.95,0.835,0.986,0.95,0.1,0.028,0.301
+"mahalanobis (one-class, normal-only)",40,2,0,18,0.952,1.0,0.912,1.0,0.976,0.1,0.028,0.301
+"lof (one-class, normal-only)",40,2,0,18,0.952,1.0,0.912,1.0,0.976,0.1,0.028,0.301
