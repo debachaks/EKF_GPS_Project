@@ -1,0 +1,4 @@
+method,TP,FP,FN,TN,precision,recall,recall_ci_lo,recall_ci_hi,f1,false_alarm,fa_ci_lo,fa_ci_hi
+"isolation_forest (raw features, normal-only)",0,3,40,17,0.0,0.0,0.0,0.088,0.0,0.15,0.052,0.36
+"one_class_svm (raw features, normal-only)",40,10,0,10,0.8,1.0,0.912,1.0,0.889,0.5,0.299,0.701
+"knn_distance_k10 (raw features, normal-only)",40,2,0,18,0.952,1.0,0.912,1.0,0.976,0.1,0.028,0.301
