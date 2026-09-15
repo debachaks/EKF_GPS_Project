@@ -1,0 +1,199 @@
+% ============================================================================
+% DRAFT — IEEE ICC 2027, Communication QoS, Reliability, and Modeling (CQRM)
+% Symposium. Deadline: October 2, 2026. Target length: 6 pages (+2 overlength
+% pages allowed, $100/page) -- page limit inferred from ICC's conference-wide
+% convention (verified for the CISS symposium), not yet independently
+% confirmed for CQRM specifically.
+%
+% Scope, per plan agreed with the author: this is the SIMPLER companion to a
+% full Journal of Hardware and Systems Security (HaSS) submission. The HaSS
+% paper carries the detailed statistical-detector methodology
+% (D_final/G_final/V_final, the ANIS-gated STF causal mechanism, per-counter
+% rule-based ensemble voting). This ICC paper builds ONE additional
+% contribution on top of that foundation -- an unsupervised ML fusion layer --
+% and should NOT re-derive the full causal HPC story; summarize it and point
+% to the HaSS paper for depth.
+%
+% ML scope for THIS paper, deliberately narrowed (per agreement): one-class
+% only (Mahalanobis distance + Local Outlier Factor) -- no supervised
+% classifiers. Feature: longest consecutive run of threshold-crossing windows
+% per counter/metric (the persistence feature), not max(|score|). hpmcounter9
+% AND hpmcounter3 excluded (4 usable counters: hpmcounter4/5/8/10) --
+% hpmcounter9 per the established near-negative-control finding, hpmcounter3
+% per this project's own diagnosis that it carries a sustained pre-onset
+% artifact even after the persistence fix. Evaluation: Leave-One-Seed-Out
+% cross-validation, one clean results table.
+%
+% All \todo{} markers are unverified placeholders -- no fabricated citations.
+% Compile with: pdflatex (IEEEtran.cls must be on the TeX path -- available
+% from the IEEE / CTAN "IEEEtran" package, or the Overleaf "IEEE Conference"
+% template).
+% ============================================================================
+
+\documentclass[conference]{IEEEtran}
+
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{booktabs}
+
+% Visible TODO/placeholder marker -- makes every unfinished part of the draft
+% easy to find with a text search for "TODO" before submission.
+\newcommand{\todo}[1]{\textcolor{red}{\itshape [TODO: #1]}}
+
+\begin{document}
+
+\title{Reliable Anomaly Detection for GPS-Dependent Networked Systems via Unsupervised Fusion of Hardware Telemetry}
+
+\author{
+\IEEEauthorblockN{\todo{Author names}}
+\IEEEauthorblockA{\todo{Affiliation}}
+}
+
+\maketitle
+
+\begin{abstract}
+GPS-derived position estimates underpin the reliability of a wide range of networked and cyber-physical systems, from autonomous vehicles to distributed time synchronization. GPS spoofing silently degrades this reliability by shifting the measurement away from ground truth without any structural change in the receiving system. We present an anomaly-detection method that restores this reliability guarantee by fusing hardware performance counter (HPC) telemetry from the embedded processor running the GPS/IMU state estimator -- a channel independent of the position estimate itself. Building on a set of statistically-grounded per-counter detection features~\cite{todo_companion}, we show that an unsupervised, one-class fusion model -- requiring no labeled attack examples -- reliably distinguishes spoofed from unspoofed operation across 20 independent trials per condition, evaluated via leave-one-seed-out cross-validation, achieving perfect recall with zero false alarms (F1 = 1.000) on the conventional evaluation. We further stress-test reliability by scoring each spoofed trial's own pre-anomaly segment as a held-out negative case, and show that (i) a persistence-aware feature -- rewarding sustained rather than momentary deviation -- cuts the resulting false-alarm rate by roughly 3$\times$ over a naive peak-value feature with no cost to recall, and (ii) characterizing and excluding a single systematically-biased telemetry channel from the fused feature set resolves nearly all remaining false alarms (F1 = 0.988 under this harder evaluation). Our results argue that reliable fusion of hardware telemetry for anomaly detection depends as much on principled feature and channel design as on the fusion algorithm itself.
+\end{abstract}
+
+\begin{IEEEkeywords}
+reliability, anomaly detection, GPS spoofing, hardware telemetry, unsupervised learning, sensor fusion
+\end{IEEEkeywords}
+
+\section{Introduction}
+
+Networked and cyber-physical systems increasingly depend on GPS-derived position and timing estimates for correct, reliable operation -- autonomous vehicle coordination, distributed sensor networks, and time-synchronized communication infrastructure all inherit their reliability, in part, from the reliability of the underlying positioning solution~\cite{todo_gnss_reliability}. This dependency introduces a specific reliability threat: GPS spoofing, in which an adversary (or, in benign cases, multipath/interference) shifts the received measurement away from ground truth. A GPS/INS state estimator with fixed process and measurement noise covariances has no internal mechanism to notice when this has happened -- it simply absorbs the corrupted measurement at whatever rate its Kalman gain allows, and the system's downstream reliability degrades silently, with no structural indication that anything is wrong~\cite{todo_ekf_spoofing}.
+
+Detecting this class of reliability degradation is normally approached at the level of the position estimate itself -- innovation-based statistical tests (chi-squared/NIS monitoring) on the state estimator's own residuals~\cite{todo_nis_detection}. This is effective, but it is a single observation layer: it depends entirely on quantities the estimator itself computes and reports. In a companion study, we showed that an adaptive covariance-inflation mechanism (a Strong Tracking Filter, gated behind a formal innovation threshold) used to maintain estimator robustness under model mismatch leaves an independent, measurable footprint on the embedded processor's hardware performance counters (HPCs) -- FP-pipeline stalls, conditional-branch retirements, jump-and-link retirements -- as a direct consequence of the data-dependent code path the gating mechanism takes~\cite{todo_companion}. This gives a defender a second, independent observation of the same underlying reliability question, drawn from the physical execution of the estimator rather than its self-reported output.
+
+That companion study evaluated detection using three per-counter statistical features (window-diff detectors, denoted D, G, V) combined via a hand-designed voting rule across counters (e.g., requiring agreement among a majority of counters before declaring an anomaly). This paper asks the natural next question for a reliability-modeling audience: \textbf{can the combination across counters be learned rather than hand-designed, and can this be done without requiring labeled examples of the anomaly itself} -- a realistic constraint, since labeled spoofing incidents are rarely available in advance for a deployed reliability-monitoring system, whereas normal operating telemetry is abundant.
+
+We show that an unsupervised, one-class fusion model over the same per-counter statistical features achieves reliable detection, evaluated with leave-one-seed-out cross-validation to ensure every reported result is on data the model never saw during calibration. We additionally show that the choice of \emph{temporal aggregation} within each counter's feature construction matters as much as the choice of fusion algorithm: aggregating each counter's windowed statistic by its single most extreme value is vulnerable to isolated noise excursions, while aggregating by the \emph{longest sustained run} of threshold-crossing behavior is far more robust, without any loss of detection sensitivity to genuine anomalies.
+
+This paper makes three contributions, scoped as the natural extension of our companion statistical-detection study:
+
+\begin{enumerate}
+\item We show that an unsupervised one-class model (evaluated here with two representative approaches, Mahalanobis distance and Local Outlier Factor) can fuse hardware-telemetry-derived features across multiple counters into a single reliable anomaly decision, without ever requiring a labeled anomaly example at calibration time.
+
+\item We show that a persistence-aware feature -- the longest run of consecutive time windows exhibiting anomalous statistical behavior, rather than the single most extreme value observed -- substantially improves the robustness of this fusion, and we give a direct, controlled comparison against the simpler alternative.
+
+\item We give an honest, cross-validated account of detection reliability, including a documented case where one candidate hardware counter carried a systematic bias unrelated to the anomaly of interest, and show how excluding it restores clean detection performance -- illustrating a general principle for reliability-modeling practice: not every available telemetry channel is safe to fuse without characterization.
+\end{enumerate}
+
+\section{Related Work}
+
+\todo{Condensed pointer, not a full review -- see companion HaSS submission~\cite{todo_companion} for the detailed related-work treatment of GPS/GNSS spoofing detection, adaptive Kalman filtering, and HPC-based security. This section should cite, briefly: (a) reliability/QoS modeling of GNSS-dependent networked systems, (b) unsupervised/one-class anomaly detection in networking and telemetry contexts generally, (c) the companion statistical-detection result this paper builds on.}
+
+\section{System Model and Statistical Foundation}
+
+\todo{Condensed summary of the companion paper's system: 6-state GPS+IMU EKF on an embedded RISC-V platform; ANIS-gated Strong Tracking Filter; the three window-diff statistical features D/G/V per counter, briefly described with a pointer to the companion paper for the full three-stage construction and causal HPC mapping. This section should be \textasciitilde0.5--0.75 page -- background, not new contribution.}
+
+\section{Unsupervised Fusion Methodology}
+
+\subsection{Feature construction: from statistical scores to a persistence feature}
+
+\todo{Describe: for each of the 4 usable counters (hpmcounter4/5/8/10) $\times$ 3 statistical detectors (D/G/V) = 12 features per trial. Each feature is the longest run of consecutive windows where that detector's score exceeds its threshold, rather than the single largest score observed -- contrast briefly with the max-based alternative and state the empirical justification (Section~\ref{sec:persistence}) rather than re-deriving it here.}
+
+\subsection{One-class fusion models}
+
+\todo{Mahalanobis distance (Ledoit-Wolf shrinkage covariance) and Local Outlier Factor, both fit exclusively on normal-operation trials -- no anomaly examples used at calibration time. Threshold calibrated from a percentile of the training-fold's own scores.}
+
+\subsection{Evaluation protocol}
+
+\todo{Leave-one-seed-out cross-validation across 20 independent trials per condition; every reported prediction is on a trial withheld from calibration.}
+
+\section{Results}
+
+All results are from leave-one-seed-out cross-validation over 20 independent trials per condition (normal / spoofed), so every reported prediction is on a trial withheld from calibration. We report two evaluations. The \textbf{standard} evaluation scores genuinely anomaly-free trials against spoofed trials' post-onset segment -- the conventional ``is this trial anomalous'' question. The \textbf{stress} evaluation additionally scores each spoofed trial's own \emph{pre-onset} segment as a held-out negative case: a reliable detector must not flag the normal operating period preceding an anomaly, not only trials that are anomaly-free throughout. The stress evaluation is what actually exercises the two robustness contributions below (Sections~\ref{sec:persistence}--\ref{sec:channel}); the standard evaluation alone cannot distinguish between the feature-design choices we compare, since both already score near-perfectly there.
+
+\subsection{Detection reliability (final configuration)}
+
+Final configuration: 4 usable counters (hpmcounter3 excluded, Section~\ref{sec:channel}), persistence feature (Section~\ref{sec:persistence}), Mahalanobis distance and Local Outlier Factor, both fit exclusively on normal-operation trials.
+
+\begin{table}[htbp]
+\centering
+\caption{Detection reliability, final configuration}
+\label{tab:final}
+\begin{tabular}{@{}llccc@{}}
+\toprule
+Evaluation & Method & Recall & False-Alarm (95\% CI) & F1 \\
+\midrule
+Standard & Mahalanobis & 1.000 & 0.000 [0.000, 0.161] & 1.000 \\
+Standard & LOF         & 1.000 & 0.000 [0.000, 0.161] & 1.000 \\
+Stress   & Mahalanobis & 1.000 & 0.017 [0.003, 0.089] & 0.988 \\
+Stress   & LOF         & 1.000 & 0.017 [0.003, 0.089] & 0.988 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Recall is perfect in every configuration reported in this paper -- the two robustness contributions below trade off false-alarm rate, never detection sensitivity.
+
+\subsection{Why the persistence feature matters}
+\label{sec:persistence}
+
+Holding the counter set fixed at all 5 candidates (Section~\ref{sec:channel} removes one), we compare the original feature -- the single largest score observed anywhere in a trial's telemetry window -- against the persistence feature: the longest run of \emph{consecutive} windows exceeding threshold.
+
+\begin{table}[htbp]
+\centering
+\caption{Feature design ablation, stress evaluation, 5 counters}
+\label{tab:persistence}
+\begin{tabular}{@{}llcc@{}}
+\toprule
+Feature & Method & False-Alarm & F1 \\
+\midrule
+Max score        & Mahalanobis & 0.583 & 0.696 \\
+Max score        & LOF         & 0.500 & 0.727 \\
+\textbf{Persistence} & \textbf{Mahalanobis} & \textbf{0.167} & \textbf{0.889} \\
+\textbf{Persistence} & \textbf{LOF}         & \textbf{0.167} & \textbf{0.889} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+A single isolated noisy window inflates a max-based summary regardless of whether it is part of a genuine sustained anomaly; the persistence feature only responds to sustained deviations, cutting the stress-evaluation false-alarm rate by roughly 3$\times$ for both fusion methods with no cost to recall (both remain at 1.000, not shown in Table~\ref{tab:persistence} since it is unchanged from Table~\ref{tab:final}'s row).
+
+\subsection{Not every counter is safe to fuse}
+\label{sec:channel}
+
+With the persistence feature fixed, we traced the remaining stress-evaluation false alarms in Table~\ref{tab:persistence} to their source and found them concentrated almost entirely in one candidate counter, across all three of its statistical features, for a small subset of trials -- a sustained, multi-window deviation unrelated to the anomaly being detected. Excluding this single counter from the fused feature set (5 counters $\rightarrow$ 4) resolves nearly all of the remaining false alarms:
+
+\begin{table}[htbp]
+\centering
+\caption{Counter selection ablation, stress evaluation, persistence feature}
+\label{tab:channel}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Counter set & False-Alarm & F1 \\
+\midrule
+All 5 counters                    & 0.167 & 0.889 \\
+\textbf{4 counters (1 excluded)}  & \textbf{0.017} & \textbf{0.988} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent(Mahalanobis and LOF give identical results in both rows of Table~\ref{tab:channel}.)
+
+This is the paper's general reliability-modeling lesson: a fused anomaly model is only as reliable as its least-reliable input channel, and a systematic, sustained bias in one channel is not something the fusion algorithm -- however capable -- can be expected to average away on its own. Telemetry channels intended for a fused reliability model should be individually characterized before being trusted, not assumed interchangeable by default.
+
+\section{Discussion and Limitations}
+
+\todo{Brief: single embedded platform; the post-onset-only feature construction reflects an offline evaluation with known onset timing, and a streaming/online deployment would require a rolling-window reformulation (the underlying per-window statistical scores are already causal, so this is a reformulation, not new detection machinery); scope of evaluated anomaly profiles.}
+
+\section{Conclusion}
+
+\todo{To draft once results are locked.}
+
+% ============================================================================
+% \bibliographystyle{IEEEtran}
+% \bibliography{references}
+%
+% No references.bib exists yet. All \cite{todo_*} keys above are placeholders
+% -- create references.bib with verified entries before this will compile
+% cleanly with a bibliography; until then, comment out the two lines above
+% and use \begin{thebibliography}...\end{thebibliography} manually, or leave
+% citations as \todo{} plain text instead of \cite{} if compiling before the
+% bibliography is ready.
+% ============================================================================
+
+\end{document}

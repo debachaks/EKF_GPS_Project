@@ -1,0 +1,130 @@
+% References gathered from IEEE ICC CQRM (Communication QoS, Reliability, and
+% Modeling) symposium sessions, 2024-2025, as precedent citations establishing
+% CQRM's scope fit for anomaly-detection / ML-for-security work.
+%
+% IMPORTANT: DOI and page-number fields below are marked TODO where they could
+% not be confirmed by direct page fetch (IEEE Xplore is JS-rendered and did not
+% return content to automated fetch). Titles, authors, venue, and year were
+% gathered from IEEE ICC's own technical-program session listings via search
+% snippets, not independently verified against the live program page. Before
+% citing: open each IEEE Xplore document URL below and fill in the DOI/pages
+% from the actual page (you likely have institutional access; the automated
+% fetch here did not).
+
+@inproceedings{li2025fico,
+  author    = {Xinyi Li and Yifeng Peng and Ying Wang},
+  title     = {{FiCo}: A Fingerprinting-Based Two-Step Learning-to-Learn Approach Combining Vibration and {5G} Communication for {UAV} Classification},
+  booktitle = {2025 IEEE International Conference on Communications (ICC)},
+  year      = {2025},
+  note      = {CQRM-08: AI and ML for security in future networking. IEEE Xplore: \url{https://ieeexplore.ieee.org/document/11161218/}},
+  doi       = {TODO}
+}
+
+@inproceedings{pettorru2025jamming,
+  author    = {Giovanni Pettorru and Giovanni Nurcis and Virginia Pilloni and Marco Martal{\`o}},
+  title     = {How Do Jamming Attacks Impact the Performance of {RSS}-Based Localization Techniques?},
+  booktitle = {2025 IEEE International Conference on Communications (ICC)},
+  year      = {2025},
+  note      = {CQRM-02: Security and Privacy in Modern Networks. IEEE Xplore document not independently confirmed -- verify on IEEE Xplore before citing.},
+  doi       = {TODO}
+}
+
+@inproceedings{abasi2025loattack,
+  author    = {Ammar Kamal Abasi and Moayad Aloqaily and Mohsen Guizani},
+  title     = {{LO}-Attack Defense Mechanism: Enhancing {6G} Beam Prediction Model Security Against Complex Adversarial Attacks},
+  booktitle = {2025 IEEE International Conference on Communications (ICC)},
+  year      = {2025},
+  note      = {CQRM-02: Security and Privacy in Modern Networks. IEEE Xplore document not independently confirmed -- verify on IEEE Xplore before citing.},
+  doi       = {TODO}
+}
+
+@inproceedings{jiang2025pbft,
+  author    = {Yueqi Jiang and Xiaolin Chang and Jelena Mi{\v{s}}i{\'c} and Vojislav B. Mi{\v{s}}i{\'c} and Yingying Yao and Junchao Fan and Bocheng Ju},
+  title     = {When Honest Nodes in {PBFT} Consensus Meet Software Aging: {SMP}-Based Performability Evaluation},
+  booktitle = {2025 IEEE International Conference on Communications (ICC)},
+  year      = {2025},
+  note      = {CQRM-02: Security and Privacy in Modern Networks. IEEE Xplore document not independently confirmed -- verify on IEEE Xplore before citing.},
+  doi       = {TODO}
+}
+
+@inproceedings{zhang2024federated,
+  author    = {Han Zhang and M. Elsayed and M. Bavand and R. Gaigalas and Y. Ozcan and Melike Erol-Kantarci},
+  title     = {Federated Learning with Dual Attention for Robust Modulation Classification under Attacks},
+  booktitle = {2024 IEEE International Conference on Communications (ICC)},
+  year      = {2024},
+  pages     = {5238--5243},
+  note      = {CQRM-8: Security and Reliability. Preprint: \url{https://arxiv.org/abs/2401.11039}},
+  doi       = {TODO}
+}
+
+@inproceedings{tsikteris2025pioneer,
+  author    = {Sean Tsikteris and Md Sadman Siraj and Derrick B. Cook II and John Rogers and Eirini Eleni Tsiropoulou},
+  title     = {{PIONEER}: Positioning of Targets in Featureless {GPS} Denied Environments},
+  booktitle = {2025 IEEE International Conference on Communications (ICC)},
+  year      = {2025},
+  note      = {CQRM-03: UAV-Assisted Communications and Networks. GPS-denied (not spoofing) positioning -- directly on-topic for GPS reliability, closest GPS-specific CQRM paper found. IEEE Xplore document ID not yet confirmed -- verify before citing.},
+  doi       = {TODO}
+}
+
+@inproceedings{qmul2026gnssdas,
+  author    = {TODO},
+  title     = {An Augmented {GNSS}-{DAS} Architecture for Continuous and Robust Positioning},
+  booktitle = {2026 IEEE International Conference on Communications (ICC)},
+  year      = {2026},
+  note      = {Queen Mary University of London et al. -- fuses GNSS with distributed acoustic sensing (DAS) to stay accurate through GPS outages. DOI found via search (10.1109/ICC59461.2026.11587254) but NOT independently confirmed by direct page fetch, and its symposium/track (CQRM vs. another ICC 2026 track) was not confirmed either -- verify both before citing. Author list unconfirmed.},
+  doi       = {10.1109/ICC59461.2026.11587254}
+}
+
+@inproceedings{failureid2024,
+  author    = {TODO},
+  title     = {Efficient Learning Framework for Failure Identification Model Based on Failure Injection},
+  booktitle = {2024 IEEE International Conference on Communications (ICC)},
+  year      = {2024},
+  note      = {CQRM-8: Security and Reliability. IEEE Xplore: \url{https://ieeexplore.ieee.org/document/10623130/} -- author list not confirmed, fill in from the IEEE Xplore page before citing.},
+  doi       = {TODO}
+}
+
+% -----------------------------------------------------------------------
+% Below: ICC 2024-2025 papers NOT in CQRM -- mostly CISS (Communications
+% and Information Systems Security symposium), which is more directly
+% on-topic for spoofing/side-channel work than CQRM is. Same caveat as
+% above: gathered from search snippets of IEEE's program pages, IEEE
+% Xplore document IDs given where found, DOIs mostly unconfirmed.
+% -----------------------------------------------------------------------
+
+@inproceedings{yao2025physicalspoofing,
+  author    = {Zitong Yao and Yun Wang and Guan Gui and Tomoaki Otsuki and Shiwen Mao and Xuan Wang and Hikmet Sari},
+  title     = {A Novel Physical Spoofing Technique Using Radio Frequency Fingerprint Emulation and Model Fitting},
+  booktitle = {2025 IEEE International Conference on Communications (ICC)},
+  year      = {2025},
+  note      = {CISS-02: Attack and Defense. This is an ATTACK paper (constructs a spoofed RF fingerprint to evade detection), not a defense -- useful for motivating threat realism, not as a methodological precedent. IEEE Xplore: \url{https://ieeexplore.ieee.org/document/11161944}},
+  doi       = {TODO}
+}
+
+@inproceedings{leaking2025lbs,
+  author    = {TODO},
+  title     = {Encrypted Yet Leaking: Analyzing Side-Channel Vulnerabilities in Location Privacy of {LBS}},
+  booktitle = {2025 IEEE International Conference on Communications (ICC)},
+  year      = {2025},
+  note      = {CISS-09: Interactive-IoT Security and Privacy. Authors from Southeast University, QI-ANXIN Technology Research Institute, and Tsinghua University (exact author list unconfirmed). Shows a side channel leaking location-relevant information even through encryption (97.68\% attack accuracy) -- directly supports the premise that side channels carry exploitable signal about positioning-relevant system state, which is the core premise of our work. IEEE Xplore: \url{https://ieeexplore.ieee.org/abstract/document/11161237/}},
+  doi       = {TODO}
+}
+
+@inproceedings{qian2024vanet,
+  author    = {S. Qian},
+  title     = {Machine Learning-Based Detection of Data Replay and Data Replay Sybil Attacks for Vehicular Communication Networks},
+  booktitle = {2024 IEEE International Conference on Communications (ICC)},
+  year      = {2024},
+  pages     = {5202--5207},
+  note      = {Confirmed via abstract (user-supplied): supervised ML (binary AND multi-class) on the VeReMi-Extension dataset, with reformulated/engineered features, detecting data-replay and Sybil attacks in vehicular networks; reports >99\% detection accuracy. Same application domain (vehicular security) as our GPS/EKF spoofing work, but differs on three confirmed axes: attack type (replay/Sybil vs. GPS/EKF spoofing), detection layer (network-layer message features vs. hardware telemetry side-channel), and supervision regime (supervised binary/multi-class classification vs. our unsupervised one-class formulation). Track/symposium within ICC 2024 still not confirmed; DOI still TODO.},
+  doi       = {TODO}
+}
+
+@inproceedings{wu2024uavswarm,
+  author    = {Qirui Wu and Yirun Zhang},
+  title     = {Knowledge Distillation-Based Robust {UAV} Swarm Communication Under Malicious Attacks},
+  booktitle = {2024 IEEE International Conference on Communications (ICC) Workshops},
+  year      = {2024},
+  note      = {WS-18: Workshop on Machine Learning and Deep Learning for Wireless Security. Robust ML under attack for autonomous/UAV systems -- scope-fit citation, methodologically distant (knowledge distillation, not one-class anomaly detection).},
+  doi       = {TODO}
+}

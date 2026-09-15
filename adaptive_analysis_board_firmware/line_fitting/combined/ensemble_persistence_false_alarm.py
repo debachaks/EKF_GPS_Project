@@ -135,6 +135,43 @@ def main():
         plt.close(fig)
         print(f"Saved {plot_path}")
 
+    make_combined_figure(out)
+
+
+def make_combined_figure(out):
+    """Same per-counter panels as above, laid out as 1 row x 5 columns
+    in a single figure instead of 5 separate files."""
+    fig, axes = plt.subplots(1, len(TARGET_COUNTERS), figsize=(4.2 * len(TARGET_COUNTERS), 4.5), sharey=True)
+
+    for ax, counter in zip(axes, TARGET_COUNTERS):
+        sub = out[out["counter"] == counter]
+        for attack_type in ATTACK_TYPES:
+            s = sub[sub["attack_type"] == attack_type].set_index("scenario").loc[SCENARIOS]
+            ax.plot(SCENARIOS, s["false_alarm_rate"], marker="o", color=ATTACK_COLORS[attack_type],
+                    linewidth=2, label=attack_type)
+            for x, y in enumerate(s["false_alarm_rate"]):
+                ax.annotate(f"{y:.2f}", (x, y), textcoords="offset points", xytext=(0, 8),
+                            ha="center", fontsize=7, color=ATTACK_COLORS[attack_type])
+
+        ax.set_xticks(range(len(SCENARIOS)))
+        ax.set_xticklabels([SCENARIO_LABEL[s] for s in SCENARIOS], fontsize=7)
+        ax.set_ylim(0, 1)
+        ax.set_title(counter, fontsize=11)
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+
+    axes[0].set_ylabel("Pre-onset false-alarm rate\n(fraction of 20 trials with >=1 false flag)", fontsize=9)
+    axes[-1].legend(fontsize=9, frameon=False, loc="upper right")
+
+    fig.suptitle("False alarm vs. voting rule, all counters\n"
+                 "(I/II require 3 consecutive windows; III single window)", fontsize=12)
+    fig.tight_layout(rect=[0, 0, 1, 0.90])
+
+    plot_path = os.path.join(PLOT_DIR, "ensemble_persistence_false_alarm_all_counters.png")
+    fig.savefig(plot_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print(f"Saved {plot_path}")
+
 
 if __name__ == "__main__":
     main()

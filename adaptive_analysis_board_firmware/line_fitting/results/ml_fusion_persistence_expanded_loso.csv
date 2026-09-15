@@ -1,0 +1,3 @@
+method,TP,FP,FN,TN,precision,recall,recall_ci_lo,recall_ci_hi,f1,false_alarm,fa_ci_lo,fa_ci_hi
+"mahalanobis (persistence feature, expanded test)",40,10,0,50,0.8,1.0,0.912,1.0,0.889,0.167,0.093,0.28
+"lof (persistence feature, expanded test)",40,10,0,50,0.8,1.0,0.912,1.0,0.889,0.167,0.093,0.28

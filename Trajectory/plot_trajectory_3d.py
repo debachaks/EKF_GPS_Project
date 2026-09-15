@@ -15,6 +15,7 @@ import re
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from PIL import Image, ImageChops
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
@@ -36,6 +37,26 @@ def load_traj_array(mode, seed, array_name):
     block = text.split(array_name)[1].split("{", 1)[1].split("};")[0]
     rows = ARRAY_RE.findall(block)
     return np.array(rows, dtype=float)
+
+def autocrop(path, pad=10):
+    """Trim uniform white margin on all sides down to `pad` pixels beyond
+    the actual rendered content. mplot3d's own "tight" bbox estimate
+    doesn't track the true rendered 3D extent (it's based on the nominal
+    axes rectangle, not the view-dependent projected content), so
+    bbox_inches="tight" alone still leaves large, view-angle-dependent
+    margins -- this crops the saved raster directly instead."""
+    im = Image.open(path).convert("RGB")
+    bg = Image.new("RGB", im.size, (255, 255, 255))
+    bbox = ImageChops.difference(im, bg).getbbox()
+    if bbox is None:
+        return
+    left, top, right, bottom = bbox
+    left = max(left - pad, 0)
+    top = max(top - pad, 0)
+    right = min(right + pad, im.size[0])
+    bottom = min(bottom + pad, im.size[1])
+    im.crop((left, top, right, bottom)).save(path)
+
 
 SEED = 1
 SEED_DIR = os.path.join(PROJECT_ROOT, "original_pipeline", f"seed_{SEED}_data")
@@ -77,7 +98,7 @@ def ecef_to_enu(xyz, ref_xyz, ref_lat, ref_lon):
     return d @ R.T
 
 
-def make_plot(modes, out_name, frame="enu", source="ekf"):
+def make_plot(modes, out_name, frame="enu", source="ekf", column=False):
     """frame: "enu" (default, local East-North-Up, readable) or "ecef"
     (raw Earth-Centered Earth-Fixed meters -- axes not aligned with any
     intuitive direction, and all three coordinates sit around 6.378e6 m
@@ -95,6 +116,15 @@ def make_plot(modes, out_name, frame="enu", source="ekf"):
     filtering/smoothing applied at all. Ground truth (traj_true) is the
     same in both cases -- it's the physical path, unaffected by either
     the attack or the filter.
+
+    column: False (default) renders the original full-page-figure sizing
+    (9x7.2in, 12pt font, tall stacked legend) -- meant for a slide or a
+    standalone full-width figure. True renders a compact variant sized
+    for one column of a double-column IEEE layout (~3.5in wide): smaller
+    figure, smaller fonts/padding/tick counts so labels don't need much
+    room, and the legend moved into a small multi-column strip below the
+    plot instead of a tall stack above it, so far less of the canvas is
+    spent on whitespace/legend and more on the actual 3D trajectories.
     """
     os.makedirs(PLOT_DIR, exist_ok=True)
 
@@ -150,14 +180,36 @@ def make_plot(modes, out_name, frame="enu", source="ekf"):
 
     true_pts = project(true_raw)
 
-    plt.rcParams.update({"font.size": 12, "font.family": "serif"})
-    fig = plt.figure(figsize=(9, 7.2))
+    font_size = 7.5 if column else 12
+    plt.rcParams.update({"font.size": font_size, "font.family": "serif"})
+    fig = plt.figure(figsize=(3.5, 3.35) if column else (9, 7.2))
     ax = fig.add_subplot(111, projection="3d")
-    ax.zaxis.labelpad = 18
-    fig.subplots_adjust(left=0.02, right=0.90, top=0.95, bottom=0.05)
+    ax.zaxis.labelpad = 2 if column else 18
+    if column:
+        # A rotated 3D cuboid can never exactly fill a rectangular frame
+        # edge-to-edge without leftover blank triangular corners -- that's
+        # geometry, not a margin setting. The only real fix is to zoom in
+        # until the box overflows the canvas on every side, so every edge
+        # of the image touches grid/data instead of white space, with the
+        # excess simply clipped at the figure boundary.
+        fig.subplots_adjust(left=0.0, right=1.0, top=1.0, bottom=0.0)
+        # asymmetric overshoot: the box's rendered peak sits well below the
+        # top of its own bounding rectangle at this view angle (elev=25),
+        # so closing the top gap needs much more vertical stretch than
+        # horizontal -- a uniform overshoot either leaves the top gap open
+        # or way over-clips the left/right sides trying to close it.
+        ax.set_position([-0.03, -0.25, 0.90, 1.50])
+    else:
+        fig.subplots_adjust(left=0.02, right=0.90, top=0.95, bottom=0.05)
     ax.xaxis.pane.set_alpha(0.04)
     ax.yaxis.pane.set_alpha(0.04)
     ax.zaxis.pane.set_alpha(0.04)
+    if column:
+        from matplotlib.ticker import MaxNLocator
+        ax.xaxis.set_major_locator(MaxNLocator(4))
+        ax.yaxis.set_major_locator(MaxNLocator(4))
+        ax.zaxis.set_major_locator(MaxNLocator(4))
+        ax.tick_params(axis="both", which="major", pad=1, labelsize=5.0)
 
     if source != "true":
         ax.plot(true_pts[:, 0], true_pts[:, 1], true_pts[:, 2],
@@ -191,10 +243,42 @@ def make_plot(modes, out_name, frame="enu", source="ekf"):
             ax.scatter(*pts[onset_idx], color="black", s=32, zorder=5,
                        edgecolor="white", linewidth=0.6, marker="o", label=marker_label)
 
-    ax.set_xlabel(axis_labels[0], labelpad=10)
-    ax.set_ylabel(axis_labels[1], labelpad=10)
-    ax.set_zlabel(axis_labels[2], labelpad=18)
-    ax.legend(loc="upper left", fontsize=10.5, frameon=False)
+    ax.set_xlabel(axis_labels[0], labelpad=-3 if column else 10, fontsize=5.5 if column else None)
+    ax.set_ylabel(axis_labels[1], labelpad=-3 if column else 10, fontsize=5.5 if column else None)
+    if column:
+        # mplot3d's automatic z-label placement projects to an unpredictable
+        # figure position at this zoom/overshoot level (it kept landing
+        # either overlapping the tick numbers or entirely off-canvas,
+        # regardless of labelpad) -- placed as fixed figure text instead,
+        # at a position verified directly against the render.
+        ax.set_zlabel("")
+    else:
+        ax.set_zlabel(axis_labels[2], labelpad=18)
+    if column:
+        # mplot3d clips axis-label Text artists to the axes' own bounding
+        # box by default; that clipping happens before bbox_inches="tight"
+        # ever measures the render, so no amount of figure margin fixes a
+        # label getting cut off -- clip_on must be turned off directly.
+        ax.xaxis.label.set_clip_on(False)
+        ax.yaxis.label.set_clip_on(False)
+        ax.zaxis.label.set_clip_on(False)
+    if column:
+        # anchored to the FIGURE, not the axes (the axes rectangle now
+        # overshoots the canvas -- see set_position above -- so an
+        # axes-relative loc would land off-canvas). Placed under the
+        # grid's roof peak, inside the box, where the box is empty on
+        # both sides of the clusters/connecting line -- not in a figure
+        # corner outside the grid.
+        leg = ax.legend(loc="center", bbox_to_anchor=(0.48, 0.62), bbox_transform=fig.transFigure,
+                         fontsize=4.3, frameon=True, handlelength=0.9,
+                         handletextpad=0.25, borderaxespad=0.25, labelspacing=0.2,
+                         borderpad=0.3)
+        leg.get_frame().set_edgecolor("#888888")
+        leg.get_frame().set_linewidth(0.5)
+        leg.get_frame().set_alpha(1.0)
+        leg.get_frame().set_facecolor("white")
+    else:
+        ax.legend(loc="upper left", fontsize=10.5, frameon=False)
     ax.view_init(elev=25, azim=-35)
 
     # tighten the box to the actual data extent (matplotlib's 3D autoscale
@@ -205,15 +289,30 @@ def make_plot(modes, out_name, frame="enu", source="ekf"):
     # extent would otherwise be invisible against the ~6.378e6 m baseline.
     all_pts = np.vstack([true_pts] + [mode_pts[m] for m in modes])
     mins, maxs = all_pts.min(axis=0), all_pts.max(axis=0)
-    pad = 0.04 * (maxs - mins)
+    pad = (0.02 if column else 0.04) * (maxs - mins)
     ax.set_xlim3d(mins[0] - pad[0], maxs[0] + pad[0])
     ax.set_ylim3d(mins[1] - pad[1], maxs[1] + pad[1])
     ax.set_zlim3d(mins[2] - pad[2], maxs[2] + pad[2])
     ax.set_box_aspect(maxs - mins + 2 * pad)
 
+    if column:
+        fig.text(0.988, 0.45, axis_labels[2], rotation=90, fontsize=5.5,
+                  ha="center", va="center", family="serif")
+
     out_path = os.path.join(PLOT_DIR, out_name)
-    fig.savefig(out_path, dpi=300)
-    plt.close(fig)
+    if column:
+        # NOT bbox_inches="tight" here: mplot3d's tight-bbox estimate for
+        # rotated 3D axis-label text is unreliable and was silently
+        # cropping labels out of the render entirely (not just trimming
+        # whitespace). Save the figure plain, at the manually-tuned
+        # figsize/margins above, then crop the actual rendered pixels --
+        # that's real content, not matplotlib's approximate bbox math.
+        fig.savefig(out_path, dpi=400)
+        plt.close(fig)
+        autocrop(out_path)
+    else:
+        fig.savefig(out_path, dpi=300)
+        plt.close(fig)
     print(f"Saved {out_path}")
 
 
@@ -223,6 +322,8 @@ def main():
     make_plot(["normal", "jump", "drift"], f"seed{SEED}_normal_jump_drift_3d_ecef.png", frame="ecef")
     make_plot(["normal", "jump", "drift"], f"seed{SEED}_normal_jump_drift_3d_ecef_measured.png",
               frame="ecef", source="measured")
+    make_plot(["normal", "jump", "drift"], f"seed{SEED}_normal_jump_drift_3d_ecef_measured_column.png",
+              frame="ecef", source="measured", column=True)
 
 
 if __name__ == "__main__":

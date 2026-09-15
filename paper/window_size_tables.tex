@@ -1,0 +1,118 @@
+% Window-size sensitivity tables for D, G, V metrics -- per-counter
+% detection count out of 20 seeds (post-onset-only rule), split into
+% separate Drift and Jump tables per metric, across the swept window
+% sizes. All 6 usable counters shown (hpmcounter9 included, as the
+% established near-negative-control outlier -- its own degradation
+% pattern is part of the story, not hidden).
+% Source: results/d_final_sweep.csv, g_final_sweep.csv, v_final_sweep.csv.
+
+% ============================== D metric ==============================
+\begin{table}[t]
+\centering
+\caption{D metric, Drift -- detected / 20 seeds, by window size}
+\label{tab:window-sweep-d-drift}
+\begin{tabular}{@{}lcccccc@{}}
+\toprule
+Counter & $W$=5 & $W$=10 & $W$=15 & $W$=20 & $W$=25 & $W$=30 \\
+\midrule
+hpmcounter3  & 19 & 20 & 18 & 17 & 17 & 17 \\
+hpmcounter4  & 18 & 18 & 18 & 17 & 18 & 17 \\
+hpmcounter5  & 20 & 19 & 20 & 19 & 19 & 19 \\
+hpmcounter8  & 20 & 20 & 19 & 18 & 18 & 18 \\
+hpmcounter9  & 13 & 15 & 20 & 19 & 19 & 20 \\
+hpmcounter10 & 18 & 19 & 18 & 18 & 17 & 17 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[t]
+\centering
+\caption{D metric, Jump -- detected / 20 seeds, by window size}
+\label{tab:window-sweep-d-jump}
+\begin{tabular}{@{}lcccccc@{}}
+\toprule
+Counter & $W$=5 & $W$=10 & $W$=15 & $W$=20 & $W$=25 & $W$=30 \\
+\midrule
+hpmcounter3  & 20 & 20 & 20 & 20 & 20 & 17 \\
+hpmcounter4  & 20 & 20 & 20 & 20 & 20 & 17 \\
+hpmcounter5  & 20 & 20 & 20 & 20 & 20 & 19 \\
+hpmcounter8  & 20 & 20 & 20 & 20 & 20 & 18 \\
+hpmcounter9  & 9  & 14 & 17 & 16 & 18 & 20 \\
+hpmcounter10 & 20 & 20 & 20 & 20 & 20 & 19 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ============================== G metric ==============================
+\begin{table}[t]
+\centering
+\caption{G metric, Drift -- detected / 20 seeds, by window size}
+\label{tab:window-sweep-g-drift}
+\begin{tabular}{@{}lcccccc@{}}
+\toprule
+Counter & $W$=5 & $W$=10 & $W$=15 & $W$=20 & $W$=25 & $W$=30 \\
+\midrule
+hpmcounter3  & 20 & 18 & 14 & 12 & 13 & 13 \\
+hpmcounter4  & 18 & 17 & 12 & 12 & 13 & 13 \\
+hpmcounter5  & 18 & 17 & 11 & 12 & 13 & 12 \\
+hpmcounter8  & 18 & 17 & 13 & 12 & 13 & 13 \\
+hpmcounter9  & 17 & 20 & 19 & 18 & 13 & 12 \\
+hpmcounter10 & 18 & 18 & 13 & 12 & 13 & 13 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[t]
+\centering
+\caption{G metric, Jump -- detected / 20 seeds, by window size}
+\label{tab:window-sweep-g-jump}
+\begin{tabular}{@{}lcccccc@{}}
+\toprule
+Counter & $W$=5 & $W$=10 & $W$=15 & $W$=20 & $W$=25 & $W$=30 \\
+\midrule
+hpmcounter3  & 20 & 20 & 20 & 20 & 20 & 20 \\
+hpmcounter4  & 20 & 20 & 20 & 20 & 20 & 20 \\
+hpmcounter5  & 20 & 20 & 20 & 20 & 20 & 20 \\
+hpmcounter8  & 20 & 20 & 20 & 20 & 20 & 20 \\
+hpmcounter9  & 12 & 16 & 16 & 15 & 11 & 11 \\
+hpmcounter10 & 20 & 20 & 20 & 20 & 20 & 20 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ============================== V metric ==============================
+\begin{table}[t]
+\centering
+\caption{V metric, Drift -- detected / 20 seeds, by window size}
+\label{tab:window-sweep-v-drift}
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+Counter & $W$=5 & $W$=10 & $W$=20 & $W$=30 & $W$=50 \\
+\midrule
+hpmcounter3  & 19 & 18 & 18 & 15 & 15 \\
+hpmcounter4  & 18 & 17 & 18 & 15 & 15 \\
+hpmcounter5  & 19 & 19 & 18 & 14 & 14 \\
+hpmcounter8  & 18 & 19 & 18 & 15 & 15 \\
+hpmcounter9  & 16 & 19 & 18 & 19 & 17 \\
+hpmcounter10 & 18 & 18 & 18 & 15 & 15 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[t]
+\centering
+\caption{V metric, Jump -- detected / 20 seeds, by window size}
+\label{tab:window-sweep-v-jump}
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+Counter & $W$=5 & $W$=10 & $W$=20 & $W$=30 & $W$=50 \\
+\midrule
+hpmcounter3  & 20 & 20 & 20 & 20 & 20 \\
+hpmcounter4  & 20 & 20 & 20 & 20 & 20 \\
+hpmcounter5  & 20 & 20 & 20 & 20 & 20 \\
+hpmcounter8  & 20 & 20 & 20 & 20 & 20 \\
+hpmcounter9  & 13 & 17 & 17 & 17 & 17 \\
+hpmcounter10 & 20 & 20 & 20 & 20 & 20 \\
+\bottomrule
+\end{tabular}
+\end{table}

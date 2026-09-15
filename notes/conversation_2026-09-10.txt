@@ -1,0 +1,158 @@
+CONVERSATION LOG — 2026-09-10
+EKF_GPS_Project — ML fusion classifier: fixing the pre-onset false-alarm problem
+================================================================================
+
+CONTEXT: Continuation of the 2026-08-27 session (see notes/conversation_2026-08-27.txt).
+Between sessions, another session pushed 3 commits continuing the same thread:
+  344b071 Test Isolation Forest, One-Class SVM, and k-NN distance on raw D/G/V features
+  3e67cea Remove ensemble_detection_f1_fa_* plots, superseded by ensemble_persistence_false_alarm_*
+  23f507d Add ML fusion feature-design comparison and 3-consecutive-window ensemble rule
+Pulled these at the start of today's session (fast-forward, no conflicts).
+
+SECTION 1: COMBINED FALSE-ALARM PLOT
+--------------------------------------------------------------------------------
+- Modified combined/ensemble_persistence_false_alarm.py to add make_combined_figure():
+  the existing 5 per-counter false-alarm-vs-scenario plots (I/II/III, jump/drift lines)
+  laid out as a single 1-row x 5-column figure instead of 5 separate files. Individual
+  per-counter files still generated too. Saved as
+  plots_heatmap/ensemble_persistence_false_alarm_all_counters.png.
+  Confirmed visually: hpmcounter3 is the only counter with meaningfully nonzero false
+  alarm (up to 0.15 under the loosest rule), hpmcounter4/5/8 flat zero everywhere,
+  hpmcounter10 a tiny 0.05 blip for jump only.
+
+SECTION 2: CAN "CONSECUTIVE FIRING" BE APPLIED TO THE ML MODEL?
+--------------------------------------------------------------------------------
+- User asked why ml_fusion_expanded_normal.py (from the prior session — one-class models
+  trained on normal-mode data, tested with jump/drift's pre-onset segment treated as an
+  additional "should be normal" test case) still produces high false positives (85%/70%
+  jump_pre/drift_pre vs 20% normal_full), and whether the same "require 3 consecutive
+  windows to fire" trick that fixed the rule-based ensemble's false-alarm rate could be
+  applied to the ML models the same way.
+- Explained why it can't be bolted on as-is: the ML feature (max(|score|) per counter/
+  metric, one number per whole trial) already collapses the entire time axis before the
+  one-class model ever sees the data. A persistence/consecutive-window check needs a
+  *sequence* of booleans over time to look at "did this stay elevated for 3 windows in a
+  row" -- that sequence no longer exists once max() has reduced ~140-289 windows down to
+  one scalar. Persistence has to be built INTO the feature before aggregation collapses
+  time, not applied as a rule afterward.
+- Connected this back to the actual reason ML was introduced in the first place (per the
+  user's slide: "instead of a fixed voting rule, can a model learn the best way to combine
+  all 5 counters together?"). Clarified these are two SEPARATE axes of the problem:
+  combining ACROSS counters (the spatial question -- already working, since Mahalanobis/
+  LOF do learn a joint 15-dimensional shape instead of a fixed vote) vs. aggregating WITHIN
+  a single counter's own time series (the temporal question -- currently done badly, via a
+  noise-sensitive max()). Fixing the temporal aggregation is a necessary complement to the
+  "learn to combine counters" story, not a competing idea -- a smart fusion model can't
+  fix noisy per-counter inputs on its own.
+
+SECTION 3: IMPLEMENTING THE FIX — PERSISTENCE FEATURE
+--------------------------------------------------------------------------------
+Built adaptive_analysis_board_firmware/line_fitting/ml/ml_fusion_persistence_classifier.py:
+replaces each counter/metric's feature -- max(|score|) -- with the LONGEST RUN OF
+CONSECUTIVE WINDOWS where |score| exceeds that metric's own threshold H. Same idea as the
+rule-based persistence fix, but computed as part of the feature itself, before the time
+axis is thrown away. Built on the SAME expanded test design as ml_fusion_expanded_normal.py
+(normal_full trained on the full window range; jump/drift split into _post [ground_truth=1]
+and _pre [ground_truth=0] test rows) for an apples-to-apples before/after comparison.
+Evaluation protocol, unchanged from prior sessions and used for every result below:
+Leave-One-Seed-Out (LOSO) cross-validation -- hold out one seed's rows, fit the one-class
+model (Mahalanobis / LOF) on the other 19 seeds' normal_full rows only, score the held-out
+seed, repeat for all 20 seeds, pool every held-out prediction into one confusion matrix.
+No attack labels are ever used to fit the model in any fold.
+
+RESULTS:
+  Expanded test set (100 rows: 20 normal_full + 20 jump_post + 20 jump_pre + 20 drift_post
+  + 20 drift_pre), Mahalanobis and LOF (identical results for both, since the persistence
+  feature is coarse/discrete enough that both land on the same decision boundary):
+    Before (max feature):         FA=0.583 (Mahalanobis) / 0.500 (LOF), F1=0.696 / 0.727
+    After (persistence feature):  FA=0.167 (both),                     F1=0.889 (both)
+    Recall stayed perfect (1.000) throughout -- no cost to detection power.
+  Breakdown by row_type (persistence feature): normal_full 0/20 flagged (0%, down from
+  20%), jump_pre 5/20 (25%, down from 85%), drift_pre 5/20 (25%, down from 70%).
+
+  Standard test set (60 rows: normal_full + jump_post + drift_post only -- this set does
+  NOT include jump_pre/drift_pre at all, so it never measures the pre-onset-misclassified-
+  as-attack scenario; user explicitly flagged and confirmed this distinction late in the
+  session):
+    Persistence feature: Recall=1.000, FA=0.00, F1=1.000 for BOTH Mahalanobis and LOF --
+    the best result of the whole ML exploration, beating even the original max-based LOF
+    (F1=0.976). Re-verified by rerunning live rather than trusting the earlier number.
+    (Wilson 95% CI on FA=0/20 is [0.00, 0.161] -- flagged when directly asked about the
+    "false alarm = 0" claim, not volunteered otherwise.)
+
+SECTION 4: DIAGNOSING THE RESIDUAL 25%/25%
+--------------------------------------------------------------------------------
+- Broke down which specific (counter, metric, seed) combinations still produced false
+  positives on jump_pre/drift_pre after the persistence fix. Finding: overwhelmingly
+  concentrated in ONE counter -- hpmcounter3 -- across all three of its metrics (D, G, V),
+  for a handful of specific seeds (6, 8, 9, 11, 12). hpmcounter4/5/8/10 contributed nothing
+  to any of these 10 residual false positives. G_hpmcounter3 showed genuinely long runs
+  (7-11 consecutive windows) for these seeds -- a real sustained stretch, not noise the
+  persistence filter should catch.
+- Consistent with hpmcounter3's role throughout the whole project as the noisiest of the
+  5 usable counters (established in the 2026-08-27 session's pre-onset audit, and in
+  today's Section 1 combined false-alarm plot).
+- User asked (garbled by speech-to-text, interpreted as): if we drop hpmcounter3's features
+  from training, does this go away? Tested precisely rather than assuming:
+    - Dropping ONLY G_hpmcounter3 (14 features): barely helped -- FA still 0.15 (FP=9/60),
+      because D_hpmcounter3 and V_hpmcounter3 still carry the same noisy signal on their
+      own and the model just picks up on those instead.
+    - Dropping ALL of hpmcounter3 (D, G, and V -- 12 features): dramatic fix -- FA dropped
+      to 0.017 (FP=1/60), recall still perfect (1.000).
+  Conclusion: the fix requires removing the whole noisy counter, not just one metric from
+  it, since hpmcounter3 is noisy across all three of its detectors, not just G.
+- Verified the standard (non-expanded) test set also stays perfect (F1=1.000, FA=0.00)
+  with hpmcounter3 removed -- no regression, since it was already perfect there.
+- User asked to confirm whether removing hpmcounter3 improves the model "overall" --
+  clarified precisely that the standard test literally does not contain jump_pre/drift_pre
+  rows at all (by construction, 60 rows only), so its FA=0.00 only ever measured false
+  alarms on genuine normal runs, never the pre-onset-misclassification scenario. The
+  expanded test is the only one that measures that, and it went from FA=0.167 (persistence
+  feature, hpmcounter3 included) to FA=0.017 (hpmcounter3 excluded).
+
+SECTION 5: VISUALIZING THE FEATURES
+--------------------------------------------------------------------------------
+- User asked to see the training feature matrix visually. Printed the raw 20-seed x
+  15-feature table (persistence values for normal_full rows) and generated a heatmap
+  (plots_heatmap/ml_persistence_training_features_heatmap.png): almost entirely zero --
+  16 of 20 seeds show zero elevated run anywhere across all 15 features; only seeds 3, 9,
+  12, 14, 20 show small nonzero values (mostly 1, two isolated 2's).
+- Generated equivalent heatmaps for the TEST data, one for jump and one for drift
+  (plots_heatmap/ml_persistence_test_features_{jump,drift}_heatmap.png): each stacks the
+  20 pre-onset rows on top of the 20 post-onset rows per seed, separated by a blue "onset"
+  line. Visually striking contrast: pre-onset block is almost entirely pale (matching the
+  training distribution, except the known hpmcounter3 hotspots), post-onset block lights
+  up strongly across nearly every seed and feature -- G-metric columns hit the darkest
+  values (up to 22-23 for jump, 13 for drift), D and V moderately elevated (2-14) but still
+  clearly above the pre-onset baseline.
+
+FILES CREATED/MODIFIED THIS SESSION:
+- adaptive_analysis_board_firmware/line_fitting/combined/ensemble_persistence_false_alarm.py
+  (added make_combined_figure())
+- adaptive_analysis_board_firmware/line_fitting/plots_heatmap/
+  ensemble_persistence_false_alarm_all_counters.png (new)
+- adaptive_analysis_board_firmware/line_fitting/ml/ml_fusion_persistence_classifier.py (new)
+- adaptive_analysis_board_firmware/line_fitting/results/
+  ml_fusion_persistence_expanded_loso.csv (new)
+- adaptive_analysis_board_firmware/line_fitting/plots_heatmap/
+  ml_persistence_training_features_heatmap.png (new)
+  ml_persistence_test_features_jump_heatmap.png (new)
+  ml_persistence_test_features_drift_heatmap.png (new)
+- notes/conversation_2026-09-10.txt (this file)
+
+Note: the hpmcounter3-exclusion variant (12-feature version, FA=0.017 on the expanded
+test) was tested via ad-hoc inline commands during this session and confirmed to work,
+but has NOT yet been made the default in ml_fusion_persistence_classifier.py -- the
+script still defaults to all 15 features including hpmcounter3. Was offered to the user
+as a next step (make hpmcounter3-exclusion the default) but not yet actioned or committed.
+
+OPEN THREADS AT END OF SESSION:
+- Decide whether to make hpmcounter3 exclusion the permanent default in
+  ml_fusion_persistence_classifier.py (tested and validated, not yet wired in).
+- Nothing in this session has been committed/pushed to git yet.
+- Carried over from 2026-08-27: TP/FP/FN/TN methodology for the statistical (rule-based)
+  detectors still to be finalized; rolling-window/streaming redesign of ML features still
+  future work; software-only NIS/ANIS baseline for the HaSS paper's "why hardware over
+  software" argument not yet built.
+================================================================================
+END OF LOG
