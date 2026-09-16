@@ -23,7 +23,7 @@
 % Figures: Figures 1-3 point to real files already in the repo --
 % Trajectory/plots/seed1_normal_jump_drift_3d_ecef_measured_column.png
 % (jump/drift/normal ECEF comparison, defines the attack model visually;
-% lives outside paper/), plots_heatmap/ml_persistence_test_features_jump_heatmap_column.png,
+% lives outside paper/), plots_heatmap/ml_persistence_prepost_boxplot_jump.png,
 % and plots_heatmap/ml_fusion_threshold_sweep.png -- update the
 % \includegraphics paths relative to wherever this .tex file ends up living
 % relative to the repo when assembling the final submission package. A
@@ -103,7 +103,9 @@ GPS/GNSS spoofing detection is typically approached at the level of the receiver
 \section{System and Feature Construction}
 \label{sec:system}
 
-We study a 6-state GPS+IMU extended Kalman filter (EKF) on a RISC-V embedded platform, with fixed process/measurement noise covariances as is standard for resource-constrained embedded targets. The filter includes a Strong Tracking Filter (STF) branch, gated behind a formal chi-squared innovation threshold, that inflates the state covariance only when independent statistical evidence (a rolling-mean innovation statistic, ANIS) already suggests the model no longer fits. Gating is necessary because an unconditional STF re-converges onto a spoofed trajectory fast enough to suppress the very innovation-based anomaly a detector would otherwise observe. Because this gate is a data-dependent branch -- it executes different instructions than the unmodified predict step -- its activity leaves a measurable footprint on the processor's hardware performance monitor (HPM) counters (FP-pipeline stalls, conditional-branch retirements, jump-and-link retirements), independent of the filter's own numerical output.
+We study a 6-state GPS+IMU extended Kalman filter (EKF) on a RISC-V embedded platform, with fixed process/measurement noise covariances as is standard for resource-constrained embedded targets. The \textbf{Strong Tracking Filter (STF)} is a standard adaptive-filtering technique: when a Kalman filter's predictions stop tracking its measurements well, it inflates the filter's state covariance so the filter re-converges faster. Whether that mismatch is occurring is judged from the \textbf{innovation} -- the difference between the measurement the filter predicted and the measurement actually received at that step -- summarized as its normalized squared value, the \textbf{innovation statistic (NIS)}, and smoothed into a rolling-mean form, \textbf{ANIS}, to average out ordinary sensor noise rather than reacting to every momentary fluctuation.
+
+Our filter's STF branch is \emph{gated}: it executes only when ANIS exceeds a formal chi-squared threshold, i.e., only when independent statistical evidence already suggests the model no longer fits, rather than inflating covariance at every step unconditionally. Gating is necessary because an unconditional STF re-converges onto a spoofed trajectory fast enough to suppress the very innovation-based anomaly a detector would otherwise observe. Because this gate is a data-dependent branch -- it executes different instructions than the unmodified predict step -- its activity leaves a measurable footprint on the processor's hardware performance monitor (HPM) counters (FP-pipeline stalls, conditional-branch retirements, jump-and-link retirements), independent of the filter's own numerical output.
 
 The adversary spoofs the GPS measurement stream, shifting it away from the true position from a fixed onset point onward, with no corresponding change to the (physically independent) IMU stream. We evaluate two attack profiles: a \textbf{jump} -- a large, near-instantaneous constant offset applied to the GPS measurement at onset -- and a \textbf{drift} -- a small, slowly-growing offset applied from onset onward, a harder-to-detect, low-and-slow variant of the same attack class. A third condition, \textbf{normal}, applies no attack at any point and serves as the negative baseline throughout. Figure~\ref{fig:trajectory} shows representative raw-GPS-measurement trajectories (ECEF coordinates) for all three conditions from a single seed: the jump attack displaces the measurement to a distant, disjoint region of the trajectory space at onset, while the drift attack diverges gradually from the same starting point as the normal trajectory -- a qualitative preview of why drift is consistently the harder of the two attacks to detect throughout this paper.
 
@@ -175,9 +177,9 @@ A single isolated noisy window inflates a max-based summary regardless of whethe
 
 \begin{figure}[htbp]
 \centering
-% \includegraphics[width=\columnwidth]{plots_heatmap/ml_persistence_test_features_jump_heatmap_column.png}
-\todo{Figure: insert plots\_heatmap/ml\_persistence\_test\_features\_jump\_heatmap\_column.png (or the \_drift\_ variant) here -- already sized for a single IEEE column (tall/narrow aspect, small annotation font, tight margins, no outer whitespace; generated by ml/ml\_persistence\_feature\_heatmaps.py). Per-seed, per-feature heatmap of persistence values, pre-onset vs. post-onset windows separated by an onset line; the pre-onset block is visually near-uniformly pale while the post-onset block lights up sharply. Optional -- Table~\ref{tab:persistence} already conveys the numeric story.}
-\caption{Persistence-feature values, jump trials, pre- vs. post-onset.}
+% \includegraphics[width=\columnwidth]{plots_heatmap/ml_persistence_prepost_boxplot_jump.png}
+\todo{Figure: insert plots\_heatmap/ml\_persistence\_prepost\_boxplot\_jump.png (or the \_drift\_ variant) here -- compact grouped boxplot (\textasciitilde3.2in x 2.3in, generated by ml/ml\_persistence\_feature\_heatmaps.py): persistence values pooled across all 5 counters and 20 seeds, one pair of boxes per metric (D/G/V), pre-onset vs.\ post-onset. Pre-onset sits flat at zero for all three metrics; post-onset is clearly elevated, most sharply for G. Replaces the earlier per-seed, per-feature heatmap (\_column.png), which was column-width-correct but too tall/dominant for a double-column page -- that version is still available if per-seed granularity is ever wanted. Optional -- Table~\ref{tab:persistence} already conveys the numeric story.}
+\caption{Persistence values, jump trials, pooled pre- vs. post-onset by metric.}
 \label{fig:heatmap}
 \end{figure}
 

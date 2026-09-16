@@ -111,11 +111,94 @@ def make_heatmap(table, feature_cols, mode, out_name, column=False):
     print(f"Saved {out_path}")
 
 
+METRICS = ["D", "G", "V"]
+COUNTERS = ["hpmcounter3", "hpmcounter4", "hpmcounter5", "hpmcounter8", "hpmcounter10"]
+PRE_COLOR = "#FDD9A0"
+POST_COLOR = "#D7301F"
+
+
+def make_boxplot(table, mode, out_name, ymax=None):
+    """Compact alternative to the 40-row heatmap: one grouped boxplot,
+    pre- vs. post-onset persistence values pooled across all 5 counters
+    and 20 seeds, one pair of boxes per metric (D/G/V). Same underlying
+    data and message as the heatmap (pre-onset near-zero, post-onset
+    sharply elevated) in a fraction of the space -- sized to sit
+    comfortably in one column without dominating the page.
+
+    ymax: shared upper y-limit across modes (e.g. jump vs. drift) so the
+    two figures are directly visually comparable at the same scale,
+    rather than each auto-scaling to its own data range."""
+    pre = table[table["row_type"] == f"{mode}_pre"]
+    post = table[table["row_type"] == f"{mode}_post"]
+
+    positions, box_data, colors = [], [], []
+    tick_positions, tick_labels = [], []
+    x = 0
+    for metric in METRICS:
+        cols = [f"{metric}_{c}" for c in COUNTERS]
+        pre_vals = pre[cols].to_numpy().ravel()
+        post_vals = post[cols].to_numpy().ravel()
+
+        box_data.append(pre_vals)
+        positions.append(x)
+        colors.append(PRE_COLOR)
+        box_data.append(post_vals)
+        positions.append(x + 0.8)
+        colors.append(POST_COLOR)
+
+        tick_positions.append(x + 0.4)
+        tick_labels.append(metric)
+        x += 2.2
+
+    fig, ax = plt.subplots(figsize=(3.4, 2.6))
+    bp = ax.boxplot(box_data, positions=positions, widths=0.65, patch_artist=True,
+                     medianprops=dict(color="black", linewidth=1), showfliers=True,
+                     flierprops=dict(marker="o", markersize=2, alpha=0.5))
+    for patch, color in zip(bp["boxes"], colors):
+        patch.set_facecolor(color)
+        patch.set_alpha(0.9)
+
+    ax.set_xticks(tick_positions)
+    ax.set_xticklabels(tick_labels, fontsize=8)
+    ax.set_ylabel("Persistence value\n(longest consecutive run)", fontsize=7)
+    ax.tick_params(axis="y", labelsize=7)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    if ymax is not None:
+        ax.set_ylim(0, ymax)
+        ax.set_yticks(np.arange(0, ymax + 1, 5))
+
+    legend_handles = [
+        plt.Rectangle((0, 0), 1, 1, facecolor=PRE_COLOR, alpha=0.9, label="Pre-onset"),
+        plt.Rectangle((0, 0), 1, 1, facecolor=POST_COLOR, alpha=0.9, label="Post-onset"),
+    ]
+    ax.legend(handles=legend_handles, fontsize=7, frameon=False, loc="upper left")
+    ax.set_title(f"{mode.capitalize()} trials: persistence value, pre- vs. post-onset", fontsize=8)
+
+    fig.tight_layout()
+    out_path = os.path.join(PLOT_DIR, out_name)
+    fig.savefig(out_path, dpi=400)
+    plt.close(fig)
+    autocrop(out_path)
+    print(f"Saved {out_path}")
+
+
 def main():
     table, feature_cols = build_persistence_feature_table()
+
+    # shared y-axis scale across jump/drift so the two boxplot figures are
+    # directly visually comparable rather than each auto-scaling on its own
+    all_vals = []
+    for mode in ATTACK_MODES:
+        for row_type in (f"{mode}_pre", f"{mode}_post"):
+            cols = [f"{m}_{c}" for m in METRICS for c in COUNTERS]
+            all_vals.append(table[table["row_type"] == row_type][cols].to_numpy().ravel())
+    shared_ymax = int(np.ceil(np.concatenate(all_vals).max() / 5.0) * 5)
+
     for mode in ATTACK_MODES:
         make_heatmap(table, feature_cols, mode, f"ml_persistence_test_features_{mode}_heatmap.png", column=False)
         make_heatmap(table, feature_cols, mode, f"ml_persistence_test_features_{mode}_heatmap_column.png", column=True)
+        make_boxplot(table, mode, f"ml_persistence_prepost_boxplot_{mode}.png", ymax=shared_ymax)
 
 
 if __name__ == "__main__":
