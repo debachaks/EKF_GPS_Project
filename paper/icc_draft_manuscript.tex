@@ -20,16 +20,18 @@
 % (hpmcounter4/5/8/10). Evaluation: Leave-One-Seed-Out cross-validation,
 % standard + stress evaluations.
 %
-% Figures: Figures 1-3 point to real files already in the repo --
+% Figures: Figures 1-4 point to real files already in the repo --
 % Trajectory/plots/seed1_normal_jump_drift_3d_ecef_measured_column.png
 % (jump/drift/normal ECEF comparison, defines the attack model visually;
 % lives outside paper/), plots_heatmap/ml_persistence_prepost_boxplot_jump.png,
-% and plots_heatmap/ml_fusion_threshold_sweep.png -- update the
+% plots_heatmap/ml_persistence_counter_breakdown.png (per-counter pre-onset
+% false-trigger rate, visual evidence for the hpmcounter3 exclusion), and
+% plots_heatmap/ml_fusion_threshold_sweep.png -- update the
 % \includegraphics paths relative to wherever this .tex file ends up living
-% relative to the repo when assembling the final submission package. A
-% fourth, optional bar-chart figure is left as \todo{} -- not yet
-% generated, and not required since Tables II-III already convey the same
-% numbers.
+% relative to the repo when assembling the final submission package. Four
+% real figures is likely enough for a 6-page paper; the earlier optional
+% bar-chart-summary-of-tables placeholder has been dropped since Figure 3
+% now covers that ground with new evidence instead.
 %
 % All \todo{} markers are unverified placeholders -- no fabricated
 % citations. \cite{} keys with real, checkable sources point directly into
@@ -100,24 +102,41 @@ This paper makes three contributions:
 
 GPS/GNSS spoofing detection is typically approached at the level of the receiver or the navigation filter's own residuals~\cite{todo_gnss_spoofing_detection}; recent work has also shown that spoofing can itself be engineered at the physical layer specifically to evade such detectors~\cite{yao2025physicalspoofing}, motivating detection channels that do not depend solely on the plausibility of the externally observable signal. Within IEEE ICC specifically, GPS/GNSS reliability under adverse conditions is an active topic: GPS-denied positioning~\cite{tsikteris2025pioneer} and GNSS/auxiliary-sensor fusion through outages~\cite{qmul2026gnssdas} both address reliability failure modes adjacent to, though distinct from, the spoofing scenario studied here. Side channels have separately been shown to leak security-relevant state even through nominal protections -- encrypted location-based-service traffic has been shown to leak positioning information~\cite{leaking2025lbs} -- direct precedent for this paper's premise that a channel outside a system's primary output (here, hardware telemetry rather than network traffic) can carry exploitable signal about that system's internal state. Robust fusion across multiple, individually unreliable input channels has also been studied for federated wireless systems, where attention-based weighting learns to down-weight untrustworthy participants rather than exclude them by hand~\cite{zhang2024federated}; we return to this as a natural extension of our own hand-diagnosed channel exclusion (Section~\ref{sec:channel}) in Section~\ref{sec:discussion}. Supervised ML classifiers have separately been applied to vehicular network attack detection using labeled datasets~\cite{qian2024vanet}; our approach differs in requiring no labeled attack data at all. Unsupervised/one-class anomaly detection more broadly is well established for HPC-based malware and side-channel-attack detection~\cite{todo_hpc_security}, though not previously applied, to our knowledge, to sensor-spoofing detection against a state estimator.
 
-\section{System and Feature Construction}
+\section{System Model and Feature Construction}
 \label{sec:system}
+
+\subsection{Adaptive Filtering and the Case for a Hardware-Level Signal}
+\label{sec:stf-rationale}
 
 We study a 6-state GPS+IMU extended Kalman filter (EKF) on a RISC-V embedded platform, with fixed process/measurement noise covariances as is standard for resource-constrained embedded targets. The \textbf{Strong Tracking Filter (STF)} is a standard adaptive-filtering technique: when a Kalman filter's predictions stop tracking its measurements well, it inflates the filter's state covariance so the filter re-converges faster. Whether that mismatch is occurring is judged from the \textbf{innovation} -- the difference between the measurement the filter predicted and the measurement actually received at that step -- summarized as its normalized squared value, the \textbf{innovation statistic (NIS)}, and smoothed into a rolling-mean form, \textbf{ANIS}, to average out ordinary sensor noise rather than reacting to every momentary fluctuation.
 
-Our filter's STF branch is \emph{gated}: it executes only when ANIS exceeds a formal chi-squared threshold, i.e., only when independent statistical evidence already suggests the model no longer fits, rather than inflating covariance at every step unconditionally. Gating is necessary because an unconditional STF re-converges onto a spoofed trajectory fast enough to suppress the very innovation-based anomaly a detector would otherwise observe. Because this gate is a data-dependent branch -- it executes different instructions than the unmodified predict step -- its activity leaves a measurable footprint on the processor's hardware performance monitor (HPM) counters (FP-pipeline stalls, conditional-branch retirements, jump-and-link retirements), independent of the filter's own numerical output.
+The STF's own job is exactly what makes it unsuitable as a detector on its own. Its purpose is to keep the filter numerically stable: by inflating covariance whenever the model looks mismatched, it prevents the estimate from diverging under a bad measurement, whether that measurement is spoofed or just noisy. But once the filter has adapted and re-converged onto the spoofed trajectory, the innovation-based mismatch that revealed the problem shrinks back down along with it -- the filter's own corrective response erases the evidence a detector would need, just as the attack is under way. A detector that watches the filter's self-reported innovation statistic, or the STF's own recalibration behavior, is therefore watching a signal the filter is actively working to suppress. We resolve this by separating the two concerns: the STF still runs, gated, to keep the filter stable, but detection is instead based on \emph{whether the gate itself fired} -- observed through an independent hardware side channel rather than the filter's self-reported, already-corrected output. This side-channel signal survives the very recalibration that would otherwise erase it, which is what makes it a more robust basis for detection than the innovation statistic or the STF's own behavior directly.
+
+\subsection{Gating the Strong Tracking Filter}
+\label{sec:gating}
+
+We gate the STF branch in our filter so that it executes only when ANIS exceeds a formal chi-squared threshold -- i.e., only when independent statistical evidence already suggests the model no longer fits, rather than inflating covariance at every step unconditionally. Gating is necessary for the reason given above: an unconditional STF re-converges onto a spoofed trajectory fast enough to suppress the very innovation-based anomaly a detector would otherwise observe. Because this gate is a data-dependent branch -- it executes different instructions than the unmodified predict step -- its activity leaves a measurable footprint on the processor's hardware performance monitor (HPM) counters (FP-pipeline stalls, conditional-branch retirements, jump-and-link retirements), independent of the filter's own numerical output.
+
+\subsection{Attack Model}
+\label{sec:attack-model}
 
 The adversary spoofs the GPS measurement stream, shifting it away from the true position from a fixed onset point onward, with no corresponding change to the (physically independent) IMU stream. We evaluate two attack profiles: a \textbf{jump} -- a large, near-instantaneous constant offset applied to the GPS measurement at onset -- and a \textbf{drift} -- a small, slowly-growing offset applied from onset onward, a harder-to-detect, low-and-slow variant of the same attack class. A third condition, \textbf{normal}, applies no attack at any point and serves as the negative baseline throughout. Figure~\ref{fig:trajectory} shows representative raw-GPS-measurement trajectories (ECEF coordinates) for all three conditions from a single seed: the jump attack displaces the measurement to a distant, disjoint region of the trajectory space at onset, while the drift attack diverges gradually from the same starting point as the normal trajectory -- a qualitative preview of why drift is consistently the harder of the two attacks to detect throughout this paper.
 
-\begin{figure}[htbp]
+\begin{figure}[t]
 \centering
-% \includegraphics[width=\columnwidth]{Trajectory/plots/seed1_normal_jump_drift_3d_ecef_measured_column.png}
-\todo{Figure: insert Trajectory/plots/seed1\_normal\_jump\_drift\_3d\_ecef\_measured\_column.png here -- already generated and sized for a single IEEE column (boxed in-plot legend, all three ECEF axis labels legible, no outer whitespace); path is outside paper/, adjust when assembling the submission package. Recommended as a real figure -- the only visual in the paper that grounds ``jump'' and ``drift'' concretely rather than by name alone.}
+\includegraphics[width=1\linewidth]{figures/seed1_normal_jump_drift_3d_ecef_measured_column.png}
+\vspace{-7pt}
 \caption{Raw GPS measurement trajectories (ECEF), normal vs.\ jump vs.\ drift, one representative seed.}
 \label{fig:trajectory}
 \end{figure}
 
-Specifically, we instrument five RISC-V hardware performance monitor (HPM) counters: floating-point interlock cycles (hpmcounter3), floating-point divide/square-root instructions retired (hpmcounter4), conditional-branch instructions retired (hpmcounter5), integer arithmetic instructions retired (hpmcounter8), and jump-and-link instructions retired (hpmcounter10). Each was chosen because the gated STF branch's internal computation -- a trailing-window mean, a trace computation, and a matrix product, none of which execute on the unmodified predict path -- plausibly shifts that specific event count when the branch fires. Empirically, all five show a measurable, consistent difference between normal-operation trials and spoofed trials once the branch becomes active under attack, which is the basis for treating each of them as an independent evidence source in the fusion methodology below.
+\subsection{Hardware Performance Counter Instrumentation}
+\label{sec:hpc}
+
+Hardware performance monitor (HPM) counters are special-purpose CPU registers that tally microarchitectural events -- such as retired instructions of a given class or pipeline stalls -- as an ordinary, passively-read part of processor execution, adding no meaningful overhead of their own. We instrument five RISC-V HPM counters: floating-point interlock cycles (hpmcounter3), floating-point divide/square-root instructions retired (hpmcounter4), conditional-branch instructions retired (hpmcounter5), integer arithmetic instructions retired (hpmcounter8), and jump-and-link instructions retired (hpmcounter10). Each was chosen because the gated STF branch's internal computation -- a trailing-window mean, a trace computation, and a matrix product -- only executes on the modified predict path, and so plausibly shifts that specific event count when the branch fires. Empirically, all five show a measurable, consistent difference between normal-operation trials and spoofed trials once the branch becomes active under attack, which is the basis for treating each of them as an independent evidence source in the fusion methodology below.
+
+\subsection{Statistical Feature Construction}
+\label{sec:feature-construction}
 
 We construct three per-counter statistical features from this telemetry, denoted \textbf{D}, \textbf{G}, and \textbf{V}, that share an identical three-stage construction and differ only in which per-window statistic seeds them. First, a statistic is computed over a sliding window of the counter's own z-scored time series: \textbf{D} is the t-statistic of a windowed ordinary-least-squares slope fit, capturing whether the counter is trending in a consistent direction within the window, self-normalized against its own residual noise; \textbf{G} is simply the window's own mean level, the most direct measure of whether activity is elevated; \textbf{V} is the log-compressed windowed sample variance, capturing whether the counter's short-term variability itself has changed. Second, this per-window statistic is differenced across consecutive windows, so each detector responds to how much its own statistic \emph{moved} since the previous window rather than to its absolute level -- which would otherwise be dominated by each counter's own baseline scale rather than by the change of interest. Third, this window-difference is z-scored against its own value, at the matching window position, across the 20-trial normal-operation baseline, giving a directly comparable, unitless score per counter per window, with a guard against near-zero baseline variance that would otherwise produce numerically unstable scores. Using three statistics that each capture a different distributional property of the counter's behavior -- level, trend, and spread -- rather than a single one is a deliberate redundancy: it protects against an anomaly showing up in one property but not another, and it is what gives the fusion methodology below more than a single vote per counter.
 
@@ -186,7 +205,15 @@ A single isolated noisy window inflates a max-based summary regardless of whethe
 \subsection{Not every counter is safe to fuse}
 \label{sec:channel}
 
-With the persistence feature now fixed, we traced the remaining stress-evaluation false alarms in Table~\ref{tab:persistence} to their source and found them concentrated almost entirely in one candidate counter, hpmcounter3, across all three of its statistical features, for a small subset of trials -- a sustained, multi-window deviation unrelated to the anomaly being detected. Excluding this single counter from the fused feature set (5 counters $\rightarrow$ 4: hpmcounter4/5/8/10) resolves nearly all of the remaining false alarms:
+With the persistence feature now fixed, we traced the remaining stress-evaluation false alarms in Table~\ref{tab:persistence} to their source and found them concentrated almost entirely in one candidate counter, hpmcounter3, across all three of its statistical features, for a small subset of trials -- a sustained, multi-window deviation unrelated to the anomaly being detected. Figure~\ref{fig:counterbreakdown} makes this concrete: pooled across D/G/V and both attack modes, hpmcounter3's pre-onset segments trigger a false positive on 33.3\% of trials, versus 1.7--2.5\% for each of the other four candidate counters -- roughly a 15$\times$ difference, not a marginal one. Excluding this single counter from the fused feature set (5 counters $\rightarrow$ 4: hpmcounter4/5/8/10) resolves nearly all of the remaining false alarms:
+
+\begin{figure}[htbp]
+\centering
+% \includegraphics[width=\columnwidth]{plots_heatmap/ml_persistence_counter_breakdown.png}
+\todo{Figure: insert plots\_heatmap/ml\_persistence\_counter\_breakdown.png here -- bar chart (\textasciitilde3.1in x 2.15in), pre-onset false-trigger rate per counter (fraction of trials with a nonzero persistence value before the attack starts), pooled across D/G/V and jump+drift. hpmcounter3 (highlighted) sits far above the other four, giving direct visual evidence for the exclusion decision rather than only the aggregate before/after numbers in Table~\ref{tab:channel}.}
+\caption{Pre-onset false-trigger rate by counter, pooled jump + drift.}
+\label{fig:counterbreakdown}
+\end{figure}
 
 \begin{table}[htbp]
 \centering
@@ -237,17 +264,15 @@ The percentile threshold in Section~\ref{sec:methodology} (95th for Mahalanobis,
 \begin{figure}[htbp]
 \centering
 % \includegraphics[width=\columnwidth]{plots_heatmap/ml_fusion_threshold_sweep.png}
-\todo{Figure 2: insert plots\_heatmap/ml\_fusion\_threshold\_sweep.png here -- two-panel sweep of False-Alarm and Recall vs. threshold percentile, one panel per method, chosen operating point marked. Already generated; recommended as a real figure, not a placeholder, since it directly preempts an obvious reviewer question about the 95th/5th percentile choice.}
+\todo{Figure: insert plots\_heatmap/ml\_fusion\_threshold\_sweep.png here -- two-panel sweep of False-Alarm and Recall vs. threshold percentile, one panel per method, chosen operating point marked. Already generated; recommended as a real figure, not a placeholder, since it directly preempts an obvious reviewer question about the 95th/5th percentile choice.}
 \caption{False-alarm and recall vs. threshold percentile, both methods.}
 \label{fig:threshold}
 \end{figure}
 
-\todo{Optional Figure 3, not yet generated: a bar-chart summary of Tables~\ref{tab:persistence}--\ref{tab:channel} side by side (Max vs. Persistence vs. Persistence-minus-hpmcounter3), for a reader skimming figures only. Generate only if page budget allows; the numbers are already fully conveyed by the tables above.}
-
 \section{Discussion and Limitations}
 \label{sec:discussion}
 
-All results are from a single embedded RISC-V platform; generalization to other microarchitectures with different HPM event sets is untested. The persistence feature and pre/post-onset split assume known onset timing, appropriate for this offline evaluation; a streaming/online deployment would need a rolling-window reformulation of the same feature -- a continuously-updated run-length counter rather than a batch longest-run computation over a completed window -- a reformulation of the existing causal, backward-looking per-window scores, not new detection machinery, though it introduces a latency/robustness tradeoff we do not evaluate here. The channel-exclusion result in Section~\ref{sec:channel} was diagnosed by hand: we traced the residual false alarms to one counter and removed it. A learned, per-channel weighting scheme -- as explored for robust fusion in federated wireless systems under compromised participants~\cite{zhang2024federated} -- could automate this step and generalize to deployments where the unreliable channel is not known in advance; we leave this as future work. Only two attack profiles (a large near-instantaneous jump and a slow drift) were evaluated; more sophisticated, adaptive spoofing strategies designed with knowledge of this detection scheme are not evaluated here.
+All results are from a single embedded RISC-V platform; generalization to other microarchitectures with different HPM event sets is untested. The persistence feature and pre/post-onset split assume known onset timing, appropriate for this offline evaluation; a streaming/online deployment would need a rolling-window reformulation of the same feature -- a continuously-updated run-length counter rather than a batch longest-run computation over a completed window -- a reformulation of the existing causal, backward-looking per-window scores, not new detection machinery, though it introduces a latency/robustness tradeoff we do not evaluate here. The channel-exclusion result in Section~\ref{sec:channel} was diagnosed by hand: we traced the residual false alarms to one counter and removed it. The root cause of hpmcounter3's elevated pre-onset activity is not established here; we characterize and exclude it empirically (Figure~\ref{fig:counterbreakdown}) rather than diagnose it mechanistically, and leave a microarchitectural explanation to future work. A learned, per-channel weighting scheme -- as explored for robust fusion in federated wireless systems under compromised participants~\cite{zhang2024federated} -- could automate this step and generalize to deployments where the unreliable channel is not known in advance; we leave this as future work. Only two attack profiles (a large near-instantaneous jump and a slow drift) were evaluated; more sophisticated, adaptive spoofing strategies designed with knowledge of this detection scheme are not evaluated here.
 
 \section{Conclusion}
 

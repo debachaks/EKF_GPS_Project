@@ -183,8 +183,50 @@ def make_boxplot(table, mode, out_name, ymax=None):
     print(f"Saved {out_path}")
 
 
+def make_counter_breakdown_barchart(table, out_name):
+    """Per-counter pre-onset false-trigger rate, pooled across D/G/V and
+    both attack modes (jump_pre + drift_pre): fraction of trials where
+    that counter's persistence value is nonzero before the attack has
+    even started. Direct visual evidence for the Section 5.2 claim that
+    residual stress-evaluation false alarms trace to one specific
+    counter (hpmcounter3), not a re-plot of Table 2's aggregate numbers."""
+    pre = table[table["row_type"].isin(["jump_pre", "drift_pre"])]
+
+    rates = []
+    for c in COUNTERS:
+        cols = [f"{m}_{c}" for m in METRICS]
+        vals = pre[cols].to_numpy().ravel()
+        rates.append((vals > 0).mean())
+
+    colors = ["#D7301F" if c == "hpmcounter3" else "#4C72B0" for c in COUNTERS]
+
+    fig, ax = plt.subplots(figsize=(3.4, 2.4))
+    bars = ax.bar(range(len(COUNTERS)), rates, color=colors, width=0.6)
+    for i, r in enumerate(rates):
+        ax.annotate(f"{r:.1%}", (i, r), textcoords="offset points", xytext=(0, 3),
+                    ha="center", fontsize=7)
+
+    ax.set_xticks(range(len(COUNTERS)))
+    ax.set_xticklabels([c.replace("hpmcounter", "hpm") for c in COUNTERS], fontsize=7.5, rotation=20)
+    ax.set_ylabel("Pre-onset false-trigger rate\n(fraction of trials, pooled D/G/V)", fontsize=7)
+    ax.tick_params(axis="y", labelsize=7)
+    ax.set_ylim(0, max(rates) * 1.25)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.set_title("Pre-onset false triggers by counter\n(pooled jump + drift)", fontsize=8)
+
+    fig.tight_layout()
+    out_path = os.path.join(PLOT_DIR, out_name)
+    fig.savefig(out_path, dpi=400)
+    plt.close(fig)
+    autocrop(out_path)
+    print(f"Saved {out_path}")
+
+
 def main():
     table, feature_cols = build_persistence_feature_table()
+
+    make_counter_breakdown_barchart(table, "ml_persistence_counter_breakdown.png")
 
     # shared y-axis scale across jump/drift so the two boxplot figures are
     # directly visually comparable rather than each auto-scaling on its own
